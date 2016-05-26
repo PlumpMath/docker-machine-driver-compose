@@ -18,9 +18,11 @@ func main() {
 		User:     "", // While running provide user
 		Password: "", // While running provide password
 	}
-	err := api.GetServerVersion(client)
+	versionSummary, err := api.GetServerVersion(client)
 
 	if err != nil {
 		fmt.Println(err)
+	} else {
+		fmt.Println("Server Version: ", versionSummary.Version)
 	}
 }
