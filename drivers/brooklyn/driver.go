@@ -2,36 +2,92 @@
 package brooklyn
 
 import (
+	"crypto/md5"
+	"crypto/rand"
+	"fmt"
+	"io"
+
+	"errors"
+
 	"github.com/docker/machine/libmachine/drivers"
+	"github.com/docker/machine/libmachine/log"
+	"github.com/docker/machine/libmachine/mcnflag"
 )
 
-type deviceConfig struct {
-	DiskSize int
-	Cpu      int
-	Hostname string
-}
+const (
+	driverName     = "brooklyn"
+	defaultSSHUser = "compose"
+	defaultSSHPort = 22
+)
+
+const (
+	SMALL   = "small"
+	MEDIUM  = "medium"
+	LARGE   = "large"
+	XLARGE  = "xlarge"
+	XXLARGE = "xxlarge"
+)
+
+var (
+	defaultBrooklynBaseUrl = "http://localhost:8081"
+	defaultOperatingSystem = "centos"
+	defaultTShirtSize      = MEDIUM
+
+	tShirtSizes = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
+
+	errorMissingUser     = errors.New("Brooklyn user requires the --brooklyn-user option")
+	errorMissingPassword = errors.New("Brooklyn password requires the --brooklyn-password option")
+	errorMissingLocation = errors.New("Brooklyn target location requires the --brooklyn-target-location option")
+	errorInvalidTShirtSize = errors.New("Brooklyn t shirt size is invalid, supports only small, medium, large, xlarge, xxlarge")
+)
 
 type Driver struct {
 	*drivers.BaseDriver
-	deviceConfig deviceConfig
+	Id string
+
+	Url             string
+	User            string
+	Password        string
+	Location        string
+	OperatingSystem string
+	TShirtSize      string
 }
 
-const (
-	driverName      = "brooklyn"
-	defaultMemory   = 1024
-	defaultDiskSize = 0
-	defaultRegion   = "dal01"
-	defaultCpus     = 1
-)
-
-
-// init function
-func init() {
-
+type brooklynClient struct {
+	Url      string
+	User     string
+	Password string
 }
 
 func GetDriverName() string {
 	return driverName
+}
+
+func NewDriver(hostName, storePath string) *Driver {
+	id := generateId()
+
+	driver := &Driver{
+		Id: id,
+		BaseDriver: &drivers.BaseDriver{
+			SSHUser:     defaultSSHUser,
+			SSHPort:     defaultSSHPort,
+			MachineName: hostName,
+			StorePath:   storePath,
+		},
+	}
+	return driver
+}
+
+func generateId() string {
+	rb := make([]byte, 10)
+	_, err := rand.Read(rb)
+	if err != nil {
+		log.Warnf("Unable to generate id: %s", err)
+	}
+
+	h := md5.New()
+	io.WriteString(h, string(rb))
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 /*
@@ -44,13 +100,48 @@ func (d *Driver) Create() error {
 func (d *Driver) DriverName() string {
 	return driverName
 }
-/*
+
 // GetCreateFlags returns the mcnflag.Flag slice representing the flags
 // that can be set, their descriptions and defaults.
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
-
+	return []mcnflag.Flag{
+		mcnflag.StringFlag{
+			Name:   "brooklyn-base-url",
+			Usage:  "Brooklyn Base URL",
+			Value:  defaultBrooklynBaseUrl,
+			EnvVar: "BROOKLYN_BASE_URL",
+		},
+		mcnflag.StringFlag{
+			Name:   "brooklyn-user",
+			Usage:  "Brooklyn User",
+			EnvVar: "BROOKLYN_USER",
+		},
+		mcnflag.StringFlag{
+			Name:   "brooklyn-password",
+			Usage:  "Brooklyn Password",
+			EnvVar: "BROOKLYN_PASSWORD",
+		},
+		mcnflag.StringFlag{
+			Name:   "brooklyn-target-location",
+			Usage:  "Brooklyn Target Location",
+			EnvVar: "BROOKLYN_TARGET_LOCATION",
+		},
+		mcnflag.StringFlag{
+			Name:   "operating-system",
+			Usage:  "Operating System",
+			Value:  defaultOperatingSystem,
+			EnvVar: "OPERATING_SYSTEM",
+		},
+		mcnflag.StringFlag{
+			Name:   "t-shirt-size",
+			Usage:  "T Shirt Size",
+			Value:  defaultTShirtSize,
+			EnvVar: "T_SHIRT_SIZE",
+		},
+	}
 }
 
+/*
 // GetIP returns an IP or hostname that this host is available at
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
@@ -113,13 +204,46 @@ func (d *Driver) Remove() error {
 func (d *Driver) Restart() error {
 
 }
+*/
 
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
+	d.Url = opts.String("brooklyn-base-url")
+	d.User = opts.String("brooklyn-user")                // mandatory
+	d.Password = opts.String("brooklyn-password")        // mandatory
+	d.Location = opts.String("brooklyn-target-location") // mandatory
+	d.OperatingSystem = opts.String("operating-system")
+	d.TShirtSize = opts.String("t-shirt-size")
 
+	if d.User == "" {
+		return errorMissingUser
+	}
+
+	if d.Password == "" {
+		return errorMissingPassword
+	}
+
+	if d.Location == "" {
+		return errorMissingLocation
+	}
+
+	if !contains(d.TShirtSize) {
+		return errorInvalidTShirtSize
+	}
+	return nil
 }
 
+func contains(size string) bool {
+	for _, s := range tShirtSizes {
+		if size == s {
+			return true
+		}
+	}
+	return false
+}
+
+/*
 // Start a host
 func (d *Driver) Start() error {
 
