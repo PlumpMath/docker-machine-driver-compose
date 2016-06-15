@@ -12,6 +12,7 @@ import (
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
+	"github.com/docker/machine/libmachine/state"
 )
 
 const (
@@ -90,12 +91,11 @@ func generateId() string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-/*
 // Create a host using the driver's config
 func (d *Driver) Create() error {
-
+	return nil
 }
-*/
+
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
 	return driverName
@@ -141,70 +141,70 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	}
 }
 
-/*
+
 // GetIP returns an IP or hostname that this host is available at
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
-
+	return "1.2.3.4", nil
 }
 
 // GetMachineName returns the name of the machine
 func (d *Driver) GetMachineName() string {
-
+	return "DummyMachineName"
 }
 
 // GetSSHHostname returns hostname for use with ssh
 func (d *Driver) GetSSHHostname() (string, error) {
-
+	return "DummyHostname", nil
 }
 
 // GetSSHKeyPath returns key path for use with ssh
 func (d *Driver) GetSSHKeyPath() string {
-
+	return "DummySSHKey"
 }
 
 // GetSSHPort returns port for use with ssh
 func (d *Driver) GetSSHPort() (int, error) {
-
+	return 2376, nil
 }
 
 // GetSSHUsername returns username for use with ssh
 func (d *Driver) GetSSHUsername() string {
-
+	return defaultSSHUser
 }
 
 // GetURL returns a Docker compatible host URL for connecting to this host
 // e.g. tcp://1.2.3.4:2376
 func (d *Driver) GetURL() (string, error) {
-
+	return "tcp://1.2.3.4:2376", nil
 }
 
 // GetState returns the state that the host is in (running, stopped, etc)
 func (d *Driver) GetState() (state.State, error) {
-
+	return state.Starting, nil
 }
 
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
-
+	return nil
 }
 
 // PreCreateCheck allows for pre-create operations to make sure a driver is ready for creation
 func (d *Driver) PreCreateCheck() error {
-
+	return nil
 }
 
 // Remove a host
 func (d *Driver) Remove() error {
-
+	return nil
 }
 
 // Restart a host. This may just call Stop(); Start() if the provider does not
 // have any special restart behaviour.
 func (d *Driver) Restart() error {
-
+	return nil
 }
-*/
+
 
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
@@ -243,14 +243,14 @@ func contains(size string) bool {
 	return false
 }
 
-/*
+
 // Start a host
 func (d *Driver) Start() error {
-
+	return nil
 }
 
 // Stop a host gracefully
 func (d *Driver) Stop() error {
-
+	return nil
 }
-*/
+
