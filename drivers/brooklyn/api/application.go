@@ -2,18 +2,18 @@
 package api
 
 import (
-	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
-	"text/template"
 	"bytes"
 	"encoding/json"
-	"github.com/docker/machine/libmachine/log"
 	"errors"
+	"github.com/docker/machine/libmachine/log"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
+	"text/template"
 )
 
 func CreateApplication(request *client.BrooklynAgent, application models.Application) (models.TaskSummary, error) {
 	// Define the template
-	const applicationTmpl =`name: {{.Name}}
+	const applicationTmpl = `name: {{.Name}}
 location: {{.Location}}
 services:
   - type: {{.Type}}
@@ -30,18 +30,18 @@ services:
 		return taskSummary, err
 	}
 
-	resp, body, errs := request.Post(request.BaseUrl + "/v1/applications").
-	Set("Content-Type","text/plain").
-	Set("Accept","application/json").
-	SetDebug(true).
-	Send(appYml.String()).
-	End()
+	resp, body, errs := request.Post(request.BaseUrl+"/v1/applications").
+		Set("Content-Type", "text/plain").
+		Set("Accept", "application/json").
+		SetDebug(true).
+		Send(appYml.String()).
+		End()
 
 	if errs != nil {
 		return taskSummary, errs[0]
 	}
 
-	if resp.StatusCode !=201 {
+	if resp.StatusCode != 201 {
 		return taskSummary, errors.New(resp.Status)
 	}
 

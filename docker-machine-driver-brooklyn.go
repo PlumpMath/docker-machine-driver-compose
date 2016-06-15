@@ -4,12 +4,10 @@ package main
 import (
 	"github.com/docker/machine/libmachine/drivers/plugin"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn"
-
 	/*"github.com/docker/machine/libmachine/log"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/api"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
-	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"*/
-)
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"*/)
 
 func main() {
 	plugin.RegisterDriver(brooklyn.NewDriver("", ""))

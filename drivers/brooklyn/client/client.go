@@ -17,7 +17,7 @@ type BrooklynAgent struct {
 
 func (client *BrooklynClient) GoRequest() *BrooklynAgent {
 	request := gorequest.New().
-	SetBasicAuth(client.User, client.Password)
+		SetBasicAuth(client.User, client.Password)
 	return &BrooklynAgent{
 		request,
 		client.BaseUrl,
@@ -26,7 +26,7 @@ func (client *BrooklynClient) GoRequest() *BrooklynAgent {
 
 func (client *BrooklynClient) GoRequestWithProxy(proxy string) *BrooklynAgent {
 	request := gorequest.New().Proxy(proxy).
-	SetBasicAuth(client.User, client.Password)
+		SetBasicAuth(client.User, client.Password)
 	return &BrooklynAgent{
 		request,
 		client.BaseUrl,
