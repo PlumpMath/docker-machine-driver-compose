@@ -5,13 +5,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"text/template"
+
 	"github.com/docker/machine/libmachine/log"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
-	"text/template"
 )
 
-func CreateApplication(request *client.BrooklynAgent, application models.Application) (models.TaskSummary, error) {
+func Create(request *client.BrooklynAgent, application models.Application) (models.TaskSummary, error) {
 	// Define the template
 	const applicationTmpl = `name: {{.Name}}
 location: {{.Location}}
@@ -47,5 +49,27 @@ services:
 
 	log.Info(resp)
 	err = json.Unmarshal([]byte(body), &taskSummary)
+	return taskSummary, err
+}
+
+func Delete(request *client.BrooklynAgent, applicationId string) (models.TaskSummary, error) {
+	url := fmt.Sprintf("%s/v1/applications/%s/entities/%s/expunge?release=true", request.BaseUrl,
+		applicationId, applicationId)
+	resp, body, errs := request.Post(url).
+		Set("Accept", "application/json").
+		SetDebug(true).
+		End()
+
+	var taskSummary models.TaskSummary
+	if errs != nil {
+		return taskSummary, errs[0]
+	}
+
+	if resp.StatusCode != 202 {
+		return taskSummary, errors.New(resp.Status)
+	}
+
+	log.Info(resp)
+	err := json.Unmarshal([]byte(body), &taskSummary)
 	return taskSummary, err
 }

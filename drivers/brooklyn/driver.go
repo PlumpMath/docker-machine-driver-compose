@@ -55,12 +55,13 @@ type Driver struct {
 	*drivers.BaseDriver
 	Id string
 
-	Url             string
-	User            string
-	Password        string
+	BrooklynClient *client.BrooklynClient
+
 	Location        string
 	OperatingSystem string
 	TShirtSize      string
+
+	ApplicationId string
 }
 
 type brooklynClient struct {
@@ -103,24 +104,19 @@ func generateId() string {
 // Create a host using the driver's config
 func (d *Driver) Create() error {
 
-	client := client.BrooklynClient{
-		BaseUrl:  d.Url,
-		User:     d.User,     // While running provide user
-		Password: d.Password, // While running provide password
-	}
-
 	application := models.Application{
 		Name:     d.Id,
 		Location: d.Location,
 		Type:     "com.canopy.compose.centos:1.3",
 	}
-	taskSummary, err := api.CreateApplication(
-		client.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"), application)
+	taskSummary, err := api.Create(
+		d.BrooklynClient.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"), application)
 
 	if err != nil {
 		fmt.Println(err)
 	} else {
 		fmt.Println(taskSummary.Id)
+		d.ApplicationId=taskSummary.EntityId
 	}
 	return err
 }
@@ -214,7 +210,8 @@ func (d *Driver) GetState() (state.State, error) {
 
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
-	return nil
+	_, err :=api.Delete(d.BrooklynClient.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"),d.ApplicationId)
+	return err
 }
 
 // PreCreateCheck allows for pre-create operations to make sure a driver is ready for creation
@@ -236,18 +233,19 @@ func (d *Driver) Restart() error {
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
-	d.Url = opts.String("brooklyn-base-url")
-	d.User = opts.String("brooklyn-user")                // mandatory
-	d.Password = opts.String("brooklyn-password")        // mandatory
+	d.BrooklynClient = &client.BrooklynClient{}
+	d.BrooklynClient.BaseUrl = opts.String("brooklyn-base-url")
+	d.BrooklynClient.User = opts.String("brooklyn-user")                // mandatory
+	d.BrooklynClient.Password = opts.String("brooklyn-password")        // mandatory
 	d.Location = opts.String("brooklyn-target-location") // mandatory
 	d.OperatingSystem = opts.String("operating-system")
 	d.TShirtSize = opts.String("t-shirt-size")
 
-	if d.User == "" {
+	if d.BrooklynClient.User == "" {
 		return errorMissingUser
 	}
 
-	if d.Password == "" {
+	if d.BrooklynClient.Password == "" {
 		return errorMissingPassword
 	}
 
