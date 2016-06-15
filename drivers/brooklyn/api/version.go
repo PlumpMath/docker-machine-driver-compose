@@ -4,9 +4,10 @@ package api
 import (
 	"encoding/json"
 
-	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
 	"errors"
+
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
 )
 
 func GetServerVersion(request *client.BrooklynAgent) (models.VersionSummary, error) {
@@ -15,7 +16,7 @@ func GetServerVersion(request *client.BrooklynAgent) (models.VersionSummary, err
 	if errs != nil {
 		return versionSummary, errs[0]
 	}
-	if resp.StatusCode !=200 {
+	if resp.StatusCode != 200 {
 		return versionSummary, errors.New(resp.Status)
 	}
 	err := json.Unmarshal([]byte(body), &versionSummary)

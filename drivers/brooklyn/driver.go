@@ -13,8 +13,8 @@ import (
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
 	"github.com/docker/machine/libmachine/state"
-	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/api"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
 	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
 )
 
@@ -33,7 +33,7 @@ const (
 
 	CENTOS = "centos"
 	UBUNTU = "ubuntu"
-	SUSE = "suse"
+	SUSE   = "suse"
 )
 
 var (
@@ -41,14 +41,14 @@ var (
 	defaultOperatingSystem = "centos"
 	defaultTShirtSize      = MEDIUM
 
-	tShirtSizes = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
-	operatingSystems = []string{CENTOS,UBUNTU,SUSE}
+	tShirtSizes      = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
+	operatingSystems = []string{CENTOS, UBUNTU, SUSE}
 
 	errorMissingUser       = errors.New("Brooklyn user requires the --brooklyn-user option")
 	errorMissingPassword   = errors.New("Brooklyn password requires the --brooklyn-password option")
 	errorMissingLocation   = errors.New("Brooklyn target location requires the --brooklyn-target-location option")
 	errorInvalidTShirtSize = errors.New("Brooklyn t shirt size is invalid, supports only small, medium, large, xlarge, xxlarge")
-	errorInvalidOS = errors.New("Brooklyn requested operating system is not yet supported, currently supported are centos, ubuntu or suse")
+	errorInvalidOS         = errors.New("Brooklyn requested operating system is not yet supported, currently supported are centos, ubuntu or suse")
 )
 
 type Driver struct {
@@ -105,16 +105,17 @@ func (d *Driver) Create() error {
 
 	client := client.BrooklynClient{
 		BaseUrl:  d.Url,
-		User:     d.User, // While running provide user
+		User:     d.User,     // While running provide user
 		Password: d.Password, // While running provide password
 	}
 
 	application := models.Application{
-		Name: d.Id,
+		Name:     d.Id,
 		Location: d.Location,
-		Type: "com.canopy.compose.centos:1.3",
+		Type:     "com.canopy.compose.centos:1.3",
 	}
-	taskSummary, err := api.CreateApplication(client.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"),application)
+	taskSummary, err := api.CreateApplication(
+		client.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"), application)
 
 	if err != nil {
 		fmt.Println(err)
@@ -254,11 +255,11 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingLocation
 	}
 
-	if !contains(d.TShirtSize,tShirtSizes) {
+	if !contains(d.TShirtSize, tShirtSizes) {
 		return errorInvalidTShirtSize
 	}
 
-	if !contains(d.OperatingSystem,operatingSystems) {
+	if !contains(d.OperatingSystem, operatingSystems) {
 		return errorInvalidOS
 	}
 	return nil
