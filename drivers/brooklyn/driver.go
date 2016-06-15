@@ -13,6 +13,9 @@ import (
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
 	"github.com/docker/machine/libmachine/state"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/client"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/api"
+	"stash.fsc.atos-services.net/scm/cet/bdmd.git/drivers/brooklyn/models"
 )
 
 const (
@@ -27,6 +30,10 @@ const (
 	LARGE   = "large"
 	XLARGE  = "xlarge"
 	XXLARGE = "xxlarge"
+
+	CENTOS = "centos"
+	UBUNTU = "ubuntu"
+	SUSE = "suse"
 )
 
 var (
@@ -35,11 +42,13 @@ var (
 	defaultTShirtSize      = MEDIUM
 
 	tShirtSizes = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
+	operatingSystems = []string{CENTOS,UBUNTU,SUSE}
 
-	errorMissingUser     = errors.New("Brooklyn user requires the --brooklyn-user option")
-	errorMissingPassword = errors.New("Brooklyn password requires the --brooklyn-password option")
-	errorMissingLocation = errors.New("Brooklyn target location requires the --brooklyn-target-location option")
+	errorMissingUser       = errors.New("Brooklyn user requires the --brooklyn-user option")
+	errorMissingPassword   = errors.New("Brooklyn password requires the --brooklyn-password option")
+	errorMissingLocation   = errors.New("Brooklyn target location requires the --brooklyn-target-location option")
 	errorInvalidTShirtSize = errors.New("Brooklyn t shirt size is invalid, supports only small, medium, large, xlarge, xxlarge")
+	errorInvalidOS = errors.New("Brooklyn requested operating system is not yet supported, currently supported are centos, ubuntu or suse")
 )
 
 type Driver struct {
@@ -93,7 +102,26 @@ func generateId() string {
 
 // Create a host using the driver's config
 func (d *Driver) Create() error {
-	return nil
+
+	client := client.BrooklynClient{
+		BaseUrl:  d.Url,
+		User:     d.User, // While running provide user
+		Password: d.Password, // While running provide password
+	}
+
+	application := models.Application{
+		Name: d.Id,
+		Location: d.Location,
+		Type: "com.canopy.compose.centos:1.3",
+	}
+	taskSummary, err := api.CreateApplication(client.GoRequestWithProxy("http://MC0WBVEC.ww930.my-it-solutions.net:3128"),application)
+
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println(taskSummary.Id)
+	}
+	return err
 }
 
 // DriverName returns the name of the driver
@@ -141,7 +169,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	}
 }
 
-
 // GetIP returns an IP or hostname that this host is available at
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
@@ -150,12 +177,12 @@ func (d *Driver) GetIP() (string, error) {
 
 // GetMachineName returns the name of the machine
 func (d *Driver) GetMachineName() string {
-	return "DummyMachineName"
+	return d.MachineName
 }
 
 // GetSSHHostname returns hostname for use with ssh
 func (d *Driver) GetSSHHostname() (string, error) {
-	return "DummyHostname", nil
+	return d.GetIP()
 }
 
 // GetSSHKeyPath returns key path for use with ssh
@@ -181,7 +208,7 @@ func (d *Driver) GetURL() (string, error) {
 
 // GetState returns the state that the host is in (running, stopped, etc)
 func (d *Driver) GetState() (state.State, error) {
-	return state.Starting, nil
+	return state.Running, nil
 }
 
 // Kill stops a host forcefully
@@ -205,7 +232,6 @@ func (d *Driver) Restart() error {
 	return nil
 }
 
-
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
@@ -228,21 +254,24 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingLocation
 	}
 
-	if !contains(d.TShirtSize) {
+	if !contains(d.TShirtSize,tShirtSizes) {
 		return errorInvalidTShirtSize
+	}
+
+	if !contains(d.OperatingSystem,operatingSystems) {
+		return errorInvalidOS
 	}
 	return nil
 }
 
-func contains(size string) bool {
-	for _, s := range tShirtSizes {
-		if size == s {
+func contains(element string, elements []string) bool {
+	for _, s := range elements {
+		if element == s {
 			return true
 		}
 	}
 	return false
 }
-
 
 // Start a host
 func (d *Driver) Start() error {
@@ -253,4 +282,3 @@ func (d *Driver) Start() error {
 func (d *Driver) Stop() error {
 	return nil
 }
-

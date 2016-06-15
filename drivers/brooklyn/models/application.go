@@ -42,6 +42,12 @@ type ApplicationSummary struct {
 	Status Status          `json:"status"`
 }
 
+type Application struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	Type     string `json:"type"`
+}
+
 type ApplicationSpec struct {
 	Name      string   `json:"name"`
 	Type      string   `json:"type"`
