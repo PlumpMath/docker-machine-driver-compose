@@ -225,16 +225,16 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			EnvVar: "BROOKLYN_TARGET_LOCATION",
 		},
 		mcnflag.StringFlag{
-			Name:   "operating-system",
-			Usage:  "Operating System",
+			Name:   "brooklyn-target-os",
+			Usage:  "Brooklyn Target OS",
 			Value:  defaultOperatingSystem,
-			EnvVar: "OPERATING_SYSTEM",
+			EnvVar: "BROOKLYN_TARGET_OS",
 		},
 		mcnflag.StringFlag{
-			Name:   "t-shirt-size",
-			Usage:  "T Shirt Size",
+			Name:   "brooklyn-template-size",
+			Usage:  "Brooklyn Template Size",
 			Value:  defaultTShirtSize,
-			EnvVar: "T_SHIRT_SIZE",
+			EnvVar: "BROOKLYN_TEMPLATE_SIZE",
 		},
 	}
 }
@@ -408,8 +408,8 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	password := opts.String("brooklyn-password") // mandatory
 
 	d.Location = opts.String("brooklyn-target-location") // mandatory
-	d.OperatingSystem = opts.String("operating-system")
-	d.TShirtSize = opts.String("t-shirt-size")
+	d.OperatingSystem = opts.String("brooklyn-target-os")
+	d.TShirtSize = opts.String("brooklyn-template-size")
 	d.SetSwarmConfigFromFlags(opts)
 
 	if user == "" {

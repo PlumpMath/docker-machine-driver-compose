@@ -27,14 +27,16 @@ Build Latest Driver
 Create DockerHost Without Swarm Manager
 `$ docker-machine create --driver brooklyn  \
     --brooklyn-base-url https://test.compose.canopy-cloud.com \
-    --brooklyn-user compose.test@canopy-cloud.com 
-    --brooklyn-password password --brooklyn-target-location "AWS Frankfurt" machinename`
+    --brooklyn-user compose.test@canopy-cloud.com \
+    --brooklyn-password password --brooklyn-target-location "AWS Frankfurt" \ 
+    --brooklyn-target-os ubuntu machinename`
     
 Create Docker Swarm Manager
 `$ docker-machine create --driver brooklyn  \
     --brooklyn-base-url https://test.compose.canopy-cloud.com \
     --brooklyn-user compose.test@canopy-cloud.com \
     --brooklyn-password password --brooklyn-target-location "AWS Frankfurt" \ 
+    --brooklyn-target-os ubuntu \
     --swarm --swarm-master --swarm-discovery token://SWARM_CLUSTER_TOKEN \    
     swarm-manager`
     
@@ -43,6 +45,7 @@ Create Docker Host With Registering Swarm Manager
     --brooklyn-base-url https://test.compose.canopy-cloud.com \
     --brooklyn-user compose.test@canopy-cloud.com \
     --brooklyn-password password --brooklyn-target-location "AWS Frankfurt" \ 
+    --brooklyn-target-os ubuntu \
     --swarm --swarm-discovery token://SWARM_CLUSTER_TOKEN \    
     node-01`    
     
