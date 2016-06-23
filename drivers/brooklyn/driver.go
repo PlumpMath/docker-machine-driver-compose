@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	driverName     = "brooklyn"
+	driverName     = "compose"
 	defaultSSHUser = "compose"
 	defaultSSHPort = 22
 )
@@ -50,25 +50,25 @@ var (
 	dockerPort = 2376
 	swarmPort  = 3376
 
-	defaultBrooklynBaseUrl = "http://localhost:8081"
+	defaultComposeBaseUrl = "http://localhost:8081"
 	defaultOperatingSystem = "centos"
-	defaultTShirtSize      = MEDIUM
+	defaultTemplateSize = MEDIUM
 
 	tShirtSizes      = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
 	operatingSystems = []string{CENTOS, CENTOS1, UBUNTU, SUSE}
 
-	errorMissingUser       = errors.New("Brooklyn user requires the --brooklyn-user option")
-	errorMissingPassword   = errors.New("Brooklyn password requires the --brooklyn-password option")
-	errorMissingLocation   = errors.New("Brooklyn target location requires the --brooklyn-target-location option")
-	errorInvalidTShirtSize = errors.New("Brooklyn t shirt size is invalid, supports only small, medium, large, xlarge, xxlarge")
-	errorInvalidOS         = errors.New("Brooklyn requested operating system is not yet supported, currently supported are centos, ubuntu or suse")
+	errorMissingUser       = errors.New("Compose user requires use the --compose-user option")
+	errorMissingPassword   = errors.New("Compose password requires use the --compose-password option")
+	errorMissingLocation   = errors.New("Compose target location requires use the --compose-target-location option")
+	errorInvalidTShirtSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
+	errorInvalidOS         = errors.New("Specified operating system not supported, available options are centos, ubuntu or suse")
 )
 
 type Driver struct {
 	*drivers.BaseDriver
 	Id string
 
-	BrooklynClient *net.Network
+	ComposeClient *net.Network
 
 	Location        string
 	OperatingSystem string
@@ -162,7 +162,7 @@ func (d *Driver) Create() error {
 	}
 
 	regex := fmt.Sprintf("%s.%s",COMPOSE_CATALOG_ID_STARTS_WITH,d.OperatingSystem)
-	catalogs, err := CatalogByRegex(d.BrooklynClient, regex);
+	catalogs, err := CatalogByRegex(d.ComposeClient, regex);
 	catalogId := catalogs[0].Id
 	log.Infof(catalogId)
 
@@ -178,7 +178,7 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	taskSummary, err := application.CreateFromBytes(d.BrooklynClient, appYaml)
+	taskSummary, err := application.CreateFromBytes(d.ComposeClient, appYaml)
 	d.ApplicationId = taskSummary.EntityId
 
 	if err != nil {
@@ -204,37 +204,37 @@ func (d *Driver) DriverName() string {
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
-			Name:   "brooklyn-base-url",
-			Usage:  "Brooklyn Base URL",
-			Value:  defaultBrooklynBaseUrl,
-			EnvVar: "BROOKLYN_BASE_URL",
+			Name:   "compose-base-url",
+			Usage:  "Compose Base URL",
+			Value:  defaultComposeBaseUrl,
+			EnvVar: "COMPOSE_BASE_URL",
 		},
 		mcnflag.StringFlag{
-			Name:   "brooklyn-user",
-			Usage:  "Brooklyn User",
-			EnvVar: "BROOKLYN_USER",
+			Name:   "compose-user",
+			Usage:  "Compose User",
+			EnvVar: "COMPOSE_USER",
 		},
 		mcnflag.StringFlag{
-			Name:   "brooklyn-password",
-			Usage:  "Brooklyn Password",
-			EnvVar: "BROOKLYN_PASSWORD",
+			Name:   "compose-password",
+			Usage:  "Compose Password",
+			EnvVar: "COMPOSE_PASSWORD",
 		},
 		mcnflag.StringFlag{
-			Name:   "brooklyn-target-location",
-			Usage:  "Brooklyn Target Location",
-			EnvVar: "BROOKLYN_TARGET_LOCATION",
+			Name:   "compose-target-location",
+			Usage:  "Compose Target Location",
+			EnvVar: "COMPOSE_TARGET_LOCATION",
 		},
 		mcnflag.StringFlag{
-			Name:   "brooklyn-target-os",
-			Usage:  "Brooklyn Target OS",
+			Name:   "compose-target-os",
+			Usage:  "Compose Target OS",
 			Value:  defaultOperatingSystem,
-			EnvVar: "BROOKLYN_TARGET_OS",
+			EnvVar: "COMPOSE_TARGET_OS",
 		},
 		mcnflag.StringFlag{
-			Name:   "brooklyn-template-size",
-			Usage:  "Brooklyn Template Size",
-			Value:  defaultTShirtSize,
-			EnvVar: "BROOKLYN_TEMPLATE_SIZE",
+			Name:   "compose-template-size",
+			Usage:  "Compose Template Size",
+			Value:  defaultTemplateSize,
+			EnvVar: "COMPOSE_TEMPLATE_SIZE",
 		},
 	}
 }
@@ -243,7 +243,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
 	log.Infof("GetIP()")
-	sshHostAddress, err := DescendantsSshHostAndPortSensor(d.BrooklynClient, d.ApplicationId)
+	sshHostAddress, err := DescendantsSshHostAndPortSensor(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		return "", nil
 	}
@@ -309,7 +309,7 @@ func (d *Driver) GetState() (state.State, error) {
 		return state.Stopped, errors.New("Application id is nil.")
 	}
 
-	applicationSummary, err := application.Application(d.BrooklynClient, d.ApplicationId)
+	applicationSummary, err := application.Application(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		return state.Error, err
 	}
@@ -337,14 +337,14 @@ func (d *Driver) Kill() error {
 		return nil
 	}
 
-	_, err := application.Application(d.BrooklynClient, d.ApplicationId)
+	_, err := application.Application(d.ComposeClient, d.ApplicationId)
 
 	if err != nil {
 		log.Warnf("Application having id [%s] does not exists", d.ApplicationId)
 		return nil
 	}
 
-	_, err = application.Delete(d.BrooklynClient, d.ApplicationId)
+	_, err = application.Delete(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		log.Errorf("Error while killing application [%s]", d.ApplicationId)
 	}
@@ -355,21 +355,21 @@ func (d *Driver) Kill() error {
 func (d *Driver) PreCreateCheck() error {
 
 	// Validate specified server exists and reachable.
-	state,err := server.Healthy(d.BrooklynClient)
+	state,err := server.Healthy(d.ComposeClient)
 	if err != nil {
 		return err
  	} else if state != "true" {
-		return errors.New("Brooklyn Server not healthy.")
+		return errors.New("Compose Server not healthy.")
 	}
 
 	// Validate specified location exists.
-	if _, err = LocationExists(d.BrooklynClient,d.Location); err != nil {
+	if _, err = LocationExists(d.ComposeClient,d.Location); err != nil {
 		return err
 	}
 
 	// Validate specified operating system catalog exists.
 	regex := fmt.Sprintf("%s.%s",COMPOSE_CATALOG_ID_STARTS_WITH,d.OperatingSystem)
-	catalogs, err := CatalogByRegex(d.BrooklynClient, regex);
+	catalogs, err := CatalogByRegex(d.ComposeClient, regex);
 	if  err != nil  {
 		return err
 	} else if len(catalogs) <= 0 {
@@ -385,7 +385,7 @@ func (d *Driver) Remove() error {
 		log.Warnf("Empty ApplicationId")
 		return nil
 	}
-	_, err := Delete(d.BrooklynClient, d.ApplicationId)
+	_, err := Delete(d.ComposeClient, d.ApplicationId)
 
 	if err != nil {
 		log.Errorf("Error while removing application [%s]", d.ApplicationId)
@@ -403,13 +403,13 @@ func (d *Driver) Restart() error {
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
-	baseUrl := opts.String("brooklyn-base-url")
-	user := opts.String("brooklyn-user")         // mandatory
-	password := opts.String("brooklyn-password") // mandatory
+	baseUrl := opts.String("compose-base-url")
+	user := opts.String("compose-user")         // mandatory
+	password := opts.String("compose-password") // mandatory
 
-	d.Location = opts.String("brooklyn-target-location") // mandatory
-	d.OperatingSystem = opts.String("brooklyn-target-os")
-	d.TShirtSize = opts.String("brooklyn-template-size")
+	d.Location = opts.String("compose-target-location") // mandatory
+	d.OperatingSystem = opts.String("compose-target-os")
+	d.TShirtSize = opts.String("compose-template-size")
 	d.SetSwarmConfigFromFlags(opts)
 
 	if user == "" {
@@ -432,7 +432,7 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorInvalidOS
 	}
 
-	d.BrooklynClient = net.NewNetwork(baseUrl, user, password, false)
+	d.ComposeClient = net.NewNetwork(baseUrl, user, password, false)
 
 	return nil
 }
