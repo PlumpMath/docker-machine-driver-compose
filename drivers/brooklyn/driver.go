@@ -23,6 +23,7 @@ import (
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
 	"github.com/apache/brooklyn-client/api/server"
+	"strings"
 )
 
 const (
@@ -38,12 +39,11 @@ const (
 	XLARGE  = "xlarge"
 	XXLARGE = "xxlarge"
 
-	CENTOS = "centos"
-	CENTOS1 = "centos1"
-	UBUNTU = "ubuntu"
-	SUSE   = "suse"
+	CENTOS7 = "centos:7"
+	UBUNTU14 = "ubuntu:14"
 
-	COMPOSE_CATALOG_ID_STARTS_WITH = "com.canopy.compose"
+	COMPOSE_DOCKERHOST_CATALOG  = "com.canopy.compose.dockerhost"
+	MAPPED_PORT_SENSOR_NAME = "mapped.portPart.dockerhost.port"
 )
 
 var (
@@ -51,17 +51,17 @@ var (
 	swarmPort  = 3376
 
 	defaultComposeBaseUrl = "http://localhost:8081"
-	defaultOperatingSystem = "centos"
-	defaultTemplateSize = MEDIUM
+	defaultOperatingSystem = UBUNTU14
+	defaultTemplateSize = SMALL
 
-	tShirtSizes      = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
-	operatingSystems = []string{CENTOS, CENTOS1, UBUNTU, SUSE}
+	templateSizes      = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
+	operatingSystems = []string{CENTOS7, UBUNTU14}
 
 	errorMissingUser       = errors.New("Compose user requires use the --compose-user option")
 	errorMissingPassword   = errors.New("Compose password requires use the --compose-password option")
 	errorMissingLocation   = errors.New("Compose target location requires use the --compose-target-location option")
-	errorInvalidTShirtSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
-	errorInvalidOS         = errors.New("Specified operating system not supported, available options are centos, ubuntu or suse")
+	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
+	errorInvalidOS         = errors.New("Specified operating system not supported, available options are centos:7, ubuntu:14")
 )
 
 type Driver struct {
@@ -70,12 +70,9 @@ type Driver struct {
 
 	ComposeClient *net.Network
 
-	Location        string
-	OperatingSystem string
-	TShirtSize      string
+	Application *Application
 
 	ApplicationId string
-
 	SshHostAddress SshHostAddress
 }
 
@@ -101,6 +98,9 @@ services:
   - type: {{.Type}}
     brooklyn.config:
       dockerhost.port: 2376
+      compose.os.name: {{.OsName}}
+      compose.os.version: {{.OsVersion}}
+      compose.template.size: {{.TemplateSize}}
       compose.sshUserKey: {{.SshUserKey}}`
 // Template for DockerSwarmHost
 const swarmHostAppTmpl = `name: {{.Name}}
@@ -110,9 +110,12 @@ services:
     brooklyn.config:
       dockerhost.port: 2376
       swarmhost.port: 3376
+      compose.os.name: {{.OsName}}
+      compose.os.version: {{.OsVersion}}
+      compose.template.size: {{.TemplateSize}}
       compose.sshUserKey: {{.SshUserKey}}`
 
-func applicationYaml(swarmMaster bool, application Application) ([]byte, error) {
+func applicationYaml(swarmMaster bool, application *Application) ([]byte, error) {
 	// Create a new template and parse the application into it.
 	var t *template.Template
 	if swarmMaster {
@@ -161,19 +164,14 @@ func (d *Driver) Create() error {
 		return fmt.Errorf("unable to create key pair: %s", err)
 	}
 
-	regex := fmt.Sprintf("%s.%s",COMPOSE_CATALOG_ID_STARTS_WITH,d.OperatingSystem)
-	catalogs, err := CatalogByRegex(d.ComposeClient, regex);
+	catalogs, err := CatalogByRegex(d.ComposeClient, COMPOSE_DOCKERHOST_CATALOG);
 	catalogId := catalogs[0].Id
 	log.Infof(catalogId)
 
-	app := Application{
-		Name:       fmt.Sprintf("%s-%s", d.BaseDriver.MachineName, d.Id),
-		Location:   d.Location,
-		Type:       catalogId,
-		SshUserKey: publicKey,
-	}
+	d.Application.Type = catalogId
+	d.Application.SshUserKey = publicKey
 
-	appYaml, err := applicationYaml(d.SwarmMaster, app)
+	appYaml, err := applicationYaml(d.SwarmMaster, d.Application)
 	if err != nil {
 		return err
 	}
@@ -242,7 +240,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 // GetIP returns an IP or hostname that this host is available at
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
-	log.Infof("GetIP()")
+	log.Debugf("Calling .GetIP()")
 	sshHostAddress, err := DescendantsSshHostAndPortSensor(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		return "", nil
@@ -259,13 +257,13 @@ func (d *Driver) GetMachineName() string {
 
 // GetSSHHostname returns hostname for use with ssh
 func (d *Driver) GetSSHHostname() (string, error) {
-	log.Infof("GetSSHHostname()")
+	log.Debugf("Calling .GetSSHHostname()")
 	return d.GetIP()
 }
 
 // GetSSHPort returns port for use with ssh
 func (d *Driver) GetSSHPort() (int, error) {
-	log.Infof("GetSSHPort()")
+	log.Debugf("Calling .GetSSHPort()")
 	log.Info(d.SshHostAddress.HostAndPort.Port)
 	return d.SshHostAddress.HostAndPort.Port, nil
 }
@@ -283,7 +281,7 @@ func (d *Driver) GetSSHUsername() string {
 // GetURL returns a Docker compatible host URL for connecting to this host
 // e.g. tcp://1.2.3.4:2376
 func (d *Driver) GetURL() (string, error) {
-	log.Infof("GetURL()")
+	log.Debugf("Calling .GetURL()")
 	if err := drivers.MustBeRunning(d); err != nil {
 		return "", err
 	}
@@ -296,13 +294,21 @@ func (d *Driver) GetURL() (string, error) {
 		return "", nil
 	}
 
+	sensorInfo, err := DescendantsSensor(d.ComposeClient,d.ApplicationId,MAPPED_PORT_SENSOR_NAME)
+	if err != nil {
+		for key, _ := range sensorInfo {
+			dockerPort = sensorInfo[key]
+			break;
+		}
+	}
+
 	url := fmt.Sprintf("tcp://%s:%d", ip, dockerPort)
 	return url, nil
 }
 
 // GetState returns the state that the host is in (running, stopped, etc)
 func (d *Driver) GetState() (state.State, error) {
-	log.Infof("GetState()")
+	log.Debugf("Calling .GetState()")
 
 	if d.ApplicationId == "" {
 		log.Warnf("Application id is nil.")
@@ -363,13 +369,12 @@ func (d *Driver) PreCreateCheck() error {
 	}
 
 	// Validate specified location exists.
-	if _, err = LocationExists(d.ComposeClient,d.Location); err != nil {
+	if _, err = LocationExists(d.ComposeClient,d.Application.Location); err != nil {
 		return err
 	}
 
 	// Validate specified operating system catalog exists.
-	regex := fmt.Sprintf("%s.%s",COMPOSE_CATALOG_ID_STARTS_WITH,d.OperatingSystem)
-	catalogs, err := CatalogByRegex(d.ComposeClient, regex);
+	catalogs, err := CatalogByRegex(d.ComposeClient, COMPOSE_DOCKERHOST_CATALOG);
 	if  err != nil  {
 		return err
 	} else if len(catalogs) <= 0 {
@@ -403,14 +408,13 @@ func (d *Driver) Restart() error {
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
+	d.SetSwarmConfigFromFlags(opts)
 	baseUrl := opts.String("compose-base-url")
 	user := opts.String("compose-user")         // mandatory
 	password := opts.String("compose-password") // mandatory
-
-	d.Location = opts.String("compose-target-location") // mandatory
-	d.OperatingSystem = opts.String("compose-target-os")
-	d.TShirtSize = opts.String("compose-template-size")
-	d.SetSwarmConfigFromFlags(opts)
+	location := opts.String("compose-target-location") // mandatory
+	operatingSystem := opts.String("compose-target-os")
+	templateSize := opts.String("compose-template-size")
 
 	if user == "" {
 		return errorMissingUser
@@ -420,20 +424,31 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingPassword
 	}
 
-	if d.Location == "" {
+	if location == "" {
 		return errorMissingLocation
 	}
 
-	if !contains(d.TShirtSize, tShirtSizes) {
-		return errorInvalidTShirtSize
+	if !contains(templateSize, templateSizes) {
+		return errorInvalidTemplateSize
 	}
 
-	if !contains(d.OperatingSystem, operatingSystems) {
+	if !contains(operatingSystem, operatingSystems) {
 		return errorInvalidOS
 	}
 
-	d.ComposeClient = net.NewNetwork(baseUrl, user, password, false)
+	tokens := strings.Split(operatingSystem,":")
+	if len(tokens) != 2 {
+		return errorInvalidOS
+	}
 
+	d.Application = NewApplication()
+	d.Application.Name = d.Id
+	d.Application.Location = location
+	d.Application.OsName = tokens[0]
+	d.Application.OsVersion = tokens[1]
+	d.Application.TemplateSize = templateSize
+
+	d.ComposeClient = net.NewNetwork(baseUrl, user, password, false)
 	return nil
 }
 

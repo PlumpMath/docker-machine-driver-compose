@@ -29,7 +29,7 @@ Create DockerHost Without Swarm Manager
     --compose-base-url https://test.compose.canopy-cloud.com \
     --compose-user compose.test@canopy-cloud.com \
     --compose-password password --compose-target-location "AWS Frankfurt" \ 
-    --compose-target-os ubuntu machinename`
+    --compose-target-os ubuntu:14 machinename`
     
 Create Docker Swarm Manager
 `$ docker-machine create --driver compose  \

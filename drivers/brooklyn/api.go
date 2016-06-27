@@ -24,7 +24,6 @@ func CatalogByRegex(network *net.Network, regex string) ([]models.CatalogItemSum
 		return response, err
 	}
 	err = json.Unmarshal(body, &response)
-	log.Info(len(response))
 	return response, err
 }
 
@@ -58,6 +57,21 @@ func DescendantsSshHostAndPortSensor(network *net.Network, applicationId string)
 		break;
 	}
 	return sshHostAddress, nil
+}
+
+func DescendantsSensor(network *net.Network, applicationId string, sensor string) (map[string]int, error) {
+	sensor, err := application.DescendantsSensor(network,applicationId,sensor)
+	m := map[string]int{}
+	if err !=nil {
+		return m, err
+	}
+
+	err = json.Unmarshal([]byte(sensor), &m)
+	if err != nil {
+		return m, err
+	}
+	log.Debug(m)
+	return m, nil
 }
 
 func LocationExists(network *net.Network, locationName string) (string, error) {

@@ -20,6 +20,16 @@ func TestDelete(t *testing.T) {
 	log.Info(sshHostAddress)
 }
 
+func TestSensor(t *testing.T) {
+	sshHostAddress, err := DescendantsSensor(network,"sdpxTJF2",MAPPED_PORT_SENSOR_NAME)
+
+	if err != nil {
+		t.Fail()
+	}
+
+	log.Info(sshHostAddress)
+}
+
 func TestCatalogByRegex(t *testing.T) {
 	catalogs, err := CatalogByRegex(network,"com.canopy.compose.ubuntu")
 	log.Info(catalogs)
