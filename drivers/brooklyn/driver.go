@@ -312,12 +312,13 @@ func (d *Driver) GetState() (state.State, error) {
 
 	if d.ApplicationId == "" {
 		log.Warnf("Application id is nil.")
-		return state.Stopped, errors.New("Application id is nil.")
+		return state.Stopped, nil
 	}
 
 	applicationSummary, err := application.Application(d.ComposeClient, d.ApplicationId)
 	if err != nil {
-		return state.Error, err
+		log.Warnf("Application does not exists.")
+		return state.Stopped, nil
 	}
 
 	log.Info(applicationSummary.Status)
@@ -352,7 +353,8 @@ func (d *Driver) Kill() error {
 
 	_, err = application.Delete(d.ComposeClient, d.ApplicationId)
 	if err != nil {
-		log.Errorf("Error while killing application [%s]", d.ApplicationId)
+		log.Warnf("Error while killing application [%s]", d.ApplicationId)
+		return nil
 	}
 	return err
 }
@@ -393,7 +395,8 @@ func (d *Driver) Remove() error {
 	_, err := Delete(d.ComposeClient, d.ApplicationId)
 
 	if err != nil {
-		log.Errorf("Error while removing application [%s]", d.ApplicationId)
+		log.Warnf("Error while removing application [%s]", d.ApplicationId)
+		return nil
 	}
 	return err
 }
