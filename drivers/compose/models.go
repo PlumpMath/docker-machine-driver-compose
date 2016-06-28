@@ -8,6 +8,7 @@ type Application struct {
 	OsName       string
 	OsVersion    string
 	TemplateSize string
+	OpenPorts    []string
 }
 
 func NewApplication() *Application {
