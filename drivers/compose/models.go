@@ -5,9 +5,6 @@ type Application struct {
 	Location     string
 	Type         string
 	SshUserKey   string
-	OsName       string
-	OsVersion    string
-	TemplateSize string
 	OpenPorts    []string
 }
 

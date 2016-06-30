@@ -14,7 +14,6 @@ import (
 
 	"io/ioutil"
 
-	"regexp"
 	"strings"
 
 	"github.com/apache/brooklyn-client/api/application"
@@ -35,51 +34,46 @@ const (
 )
 
 const (
-	SMALL   = "small"
-	MEDIUM  = "medium"
-	LARGE   = "large"
-	XLARGE  = "xlarge"
-	XXLARGE = "xxlarge"
+	//SMALL   = "small"
+	//MEDIUM  = "medium"
+	//LARGE   = "large"
+	//XLARGE  = "xlarge"
+	//XXLARGE = "xxlarge"
 
-	CENTOS7  = "centos:7"
-	UBUNTU14 = "ubuntu:14"
+	//UBUNTU = "ubuntu"
 
-	COMPOSE_DOCKERHOST_CATALOG = "com.canopy.compose.dockerhost"
+	COMPOSE_DOCKERHOST_CATALOG = "com.canopy.compose.ubuntu"
 	MAPPED_PORT_SENSOR_NAME    = "mapped.portPart.dockerhost.port"
-
 )
 
 var (
 	dockerPort = 2376
-	swarmPort  = 3376
+	// swarmPort  = 3376
 
-	defaultComposeBaseUrl  = "http://localhost:8081"
-	defaultOperatingSystem = UBUNTU14
-	defaultTemplateSize    = SMALL
+	defaultComposeBaseUrl = "http://localhost:8081"
+	// defaultOperatingSystem = UBUNTU
+	// defaultTemplateSize    = SMALL
 
 	defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
 
-	templateSizes    = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
-	operatingSystems = []string{CENTOS7, UBUNTU14}
+	// templateSizes    = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
+	// operatingSystems = []string{UBUNTU}
 
-	openPortsRegx = regexp.MustCompile(`((([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5})(?:\,)?)+/g`)
+	//openPortsRegx = regexp.MustCompile(`((([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5})(?:\,)?)+/g`)
 
-	errorMissingUser         = errors.New("Compose user requires use the --compose-user option")
-	errorMissingPassword     = errors.New("Compose password requires use the --compose-password option")
-	errorMissingLocation     = errors.New("Compose target location requires use the --compose-target-location option")
-	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
-	errorInvalidOS           = errors.New("Specified operating system not supported, available options are centos:7, ubuntu:14")
-	errorInvalidOpenPorts    = errors.New("Invalid open port request, format is > web.port: 2345,tomcat.port: 8080 < etc")
+	errorMissingUser     = errors.New("Compose user requires use the --compose-user option")
+	errorMissingPassword = errors.New("Compose password requires use the --compose-password option")
+	errorMissingLocation = errors.New("Compose target location requires use the --compose-target-location option")
+	//errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
+	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
+	//errorInvalidOpenPorts    = errors.New("Invalid open port request, format is > web.port: 2345,tomcat.port: 8080 < etc")
 )
 
 type Driver struct {
 	*drivers.BaseDriver
-	Id string
-
-	ComposeClient *net.Network
-
-	Application *Application
-
+	ComposeClient  *net.Network
+	Application    *Application
+	Id             string
 	ApplicationId  string
 	SshHostAddress SshHostAddress
 }
@@ -105,10 +99,7 @@ location: {{.Location}}
 services:
   - type: {{.Type}}
     brooklyn.config:
-      dockerhost.port: 2376
-      compose.os.name: {{.OsName}}
-      compose.os.version: {{.OsVersion}}
-      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
+      dockerhost.port: 2376{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}
       compose.sshUserKey: {{.SshUserKey}}`
 
@@ -119,10 +110,7 @@ services:
   - type: {{.Type}}
     brooklyn.config:
       dockerhost.port: 2376
-      swarmhost.port: 3376
-      compose.os.name: {{.OsName}}
-      compose.os.version: {{.OsVersion}}
-      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
+      swarmhost.port: 3376{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}
       compose.sshUserKey: {{.SshUserKey}}`
 
@@ -145,14 +133,14 @@ func applicationYaml(swarmMaster bool, application *Application) ([]byte, error)
 }
 
 // contains validate element exists in slice or not.
-func contains(element string, elements []string) bool {
-	for _, s := range elements {
-		if element == s {
-			return true
-		}
-	}
-	return false
-}
+//func contains(element string, elements []string) bool {
+//	for _, s := range elements {
+//		if element == s {
+//			return true
+//		}
+//	}
+//	return false
+//}
 
 // generateId generates random id.
 func generateId() string {
@@ -232,18 +220,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "compose-target-location",
 			Usage:  "Compose Target Location",
 			EnvVar: "COMPOSE_TARGET_LOCATION",
-		},
-		mcnflag.StringFlag{
-			Name:   "compose-target-os",
-			Usage:  "Compose Target OS",
-			Value:  defaultOperatingSystem,
-			EnvVar: "COMPOSE_TARGET_OS",
-		},
-		mcnflag.StringFlag{
-			Name:   "compose-template-size",
-			Usage:  "Compose Template Size",
-			Value:  defaultTemplateSize,
-			EnvVar: "COMPOSE_TEMPLATE_SIZE",
 		},
 		mcnflag.StringFlag{
 			Name:   "compose-open-ports",
@@ -433,10 +409,7 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	user := opts.String("compose-user")                // mandatory
 	password := opts.String("compose-password")        // mandatory
 	location := opts.String("compose-target-location") // mandatory
-	operatingSystem := opts.String("compose-target-os")
-	templateSize := opts.String("compose-template-size")
 	openPortsStr := opts.String("compose-open-ports")
-
 
 	if user == "" {
 		return errorMissingUser
@@ -450,30 +423,14 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingLocation
 	}
 
-	if !contains(templateSize, templateSizes) {
-		return errorInvalidTemplateSize
-	}
-
-	if !contains(operatingSystem, operatingSystems) {
-		return errorInvalidOS
-	}
-
 	/*
-	if openPortsStr != "" && strings.Trim(openPortsStr," ") != "" &&  !openPortsRegx.MatchString(openPortsStr) {
-		return errorInvalidOpenPorts
-	}*/
-
-	tokens := strings.Split(operatingSystem, ":")
-	if len(tokens) != 2 {
-		return errorInvalidOS
-	}
+		if openPortsStr != "" && strings.Trim(openPortsStr," ") != "" &&  !openPortsRegx.MatchString(openPortsStr) {
+			return errorInvalidOpenPorts
+		}*/
 
 	d.Application = NewApplication()
-	d.Application.Name = d.Id
+	d.Application.Name = d.MachineName
 	d.Application.Location = location
-	d.Application.OsName = tokens[0]
-	d.Application.OsVersion = tokens[1]
-	d.Application.TemplateSize = templateSize
 	d.Application.OpenPorts = strings.Split(openPortsStr, ",")
 
 	d.ComposeClient = net.NewNetwork(baseUrl, user, password, false)
