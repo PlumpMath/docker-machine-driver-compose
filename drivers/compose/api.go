@@ -7,9 +7,11 @@ import (
 	"github.com/apache/brooklyn-client/net"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/apache/brooklyn-client/models"
+	"github.com/apache/brooklyn-client/api/entity_effectors"
 	"fmt"
 	"github.com/apache/brooklyn-client/api/locations"
 	"errors"
+	"github.com/apache/brooklyn-client/api/entity_sensors"
 )
 
 const (
@@ -59,6 +61,39 @@ func DescendantsSshHostAndPortSensor(network *net.Network, applicationId string)
 	return sshHostAddress, nil
 }
 
+func GetNodeId(network *net.Network, applicationId string) (string, error) {
+	sensorInfo, err := application.DescendantsSensor(network, applicationId, HOST_ADDRESS_SENSOR_NAME)
+	var nodeId string
+
+	m := map[string]string{}
+	if err !=nil {
+		return nodeId, err
+	}
+
+	err = json.Unmarshal([]byte(sensorInfo), &m)
+	if err != nil {
+		return nodeId, err
+	}
+	for key, _ := range m {
+		log.Info("Key: ", key)
+		nodeId = key
+		break
+	}
+	return nodeId, nil
+}
+
+func GetNodeState(network *net.Network, applicationId, entityId string) (string, error) {
+	serviceState, err := entity_sensors.SensorValue(network,applicationId,entityId, SERVICE_STATE_SENSOR_NAME)
+
+	if err != nil {
+		return "", err
+	} else if state, ok := serviceState.(string); ok {
+		return state, nil
+	}
+
+	return "UNKNOWN", nil
+}
+
 func DescendantsSensor(network *net.Network, applicationId string, sensor string) (map[string]int, error) {
 	sensor, err := application.DescendantsSensor(network,applicationId,sensor)
 	m := map[string]int{}
@@ -88,4 +123,25 @@ func LocationExists(network *net.Network, locationName string) (string, error) {
 		}
 	}
 	return locationId, errors.New("Location with specified name does not exists.")
+}
+
+func TriggerStart(network *net.Network, applicationId string, entityId string) error {
+	params := []string{}
+	args := []string{}
+	_, err := entity_effectors.TriggerEffector(network,applicationId,entityId, "start", params, args)
+	return err
+}
+
+func TriggerStop(network *net.Network, applicationId string, entityId string) error {
+	params := []string{"stopProcessMode","stopMachineMode"}
+	args := []string{"ALWAYS","NEVER"}
+	_, err := entity_effectors.TriggerEffector(network,applicationId,entityId, "stop", params, args)
+	return err
+}
+
+func TriggerRestart(network *net.Network, applicationId string, entityId string) error {
+	params := []string{"restartChildren","restartMachine"}
+	args := []string{"true","false"}
+	_, err := entity_effectors.TriggerEffector(network,applicationId,entityId, "restart", params, args)
+	return err
 }

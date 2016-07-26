@@ -28,15 +28,13 @@ Create DockerHost Without Swarm Manager
 `$ docker-machine create --driver compose  \
     --compose-base-url https://test.compose.canopy-cloud.com \
     --compose-user compose.test@canopy-cloud.com \
-    --compose-password password --compose-target-location "AWS Frankfurt" \ 
-    --compose-target-os ubuntu:14 machinename`
+    --compose-password password --compose-target-location "AWS Frankfurt" machinename`
     
 Create Docker Swarm Manager
 `$ docker-machine create --driver compose  \
     --compose-base-url https://test.compose.canopy-cloud.com \
     --compose-user compose.test@canopy-cloud.com \
     --compose-password password --compose-target-location "AWS Frankfurt" \ 
-    --compose-target-os ubuntu \
     --swarm --swarm-master --swarm-discovery token://SWARM_CLUSTER_TOKEN \    
     swarm-manager`
     
@@ -45,7 +43,6 @@ Create Docker Host With Registering Swarm Manager
     --compose-base-url https://test.compose.canopy-cloud.com \
     --compose-user compose.test@canopy-cloud.com \
     --compose-password password --compose-target-location "AWS Frankfurt" \ 
-    --compose-target-os ubuntu \
     --swarm --swarm-discovery token://SWARM_CLUSTER_TOKEN \    
     node-01`    
     

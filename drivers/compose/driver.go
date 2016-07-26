@@ -25,6 +25,7 @@ import (
 	"github.com/docker/machine/libmachine/mcnutils"
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
+	"regexp"
 )
 
 const (
@@ -34,39 +35,26 @@ const (
 )
 
 const (
-	//SMALL   = "small"
-	//MEDIUM  = "medium"
-	//LARGE   = "large"
-	//XLARGE  = "xlarge"
-	//XXLARGE = "xxlarge"
-
-	//UBUNTU = "ubuntu"
-
 	COMPOSE_DOCKERHOST_CATALOG = "com.canopy.compose.ubuntu"
 	MAPPED_PORT_SENSOR_NAME    = "mapped.portPart.dockerhost.port"
+	HOST_ADDRESS_SENSOR_NAME = "host.address"
+	SERVICE_STATE_SENSOR_NAME = "service.state"
 )
 
 var (
 	dockerPort = 2376
-	// swarmPort  = 3376
+	//swarmPort  = 3376
 
 	defaultComposeBaseUrl = "http://localhost:8081"
-	// defaultOperatingSystem = UBUNTU
-	// defaultTemplateSize    = SMALL
-
-	defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
-
-	// templateSizes    = []string{SMALL, MEDIUM, LARGE, XLARGE, XXLARGE}
-	// operatingSystems = []string{UBUNTU}
-
-	//openPortsRegx = regexp.MustCompile(`((([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5})(?:\,)?)+/g`)
+	//defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
+	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 
 	errorMissingUser     = errors.New("Compose user requires use the --compose-user option")
 	errorMissingPassword = errors.New("Compose password requires use the --compose-password option")
 	errorMissingLocation = errors.New("Compose target location requires use the --compose-target-location option")
+	errorInvalidOpenPorts    = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
 	//errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
 	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
-	//errorInvalidOpenPorts    = errors.New("Invalid open port request, format is > web.port: 2345,tomcat.port: 8080 < etc")
 )
 
 type Driver struct {
@@ -75,6 +63,7 @@ type Driver struct {
 	Application    *Application
 	Id             string
 	ApplicationId  string
+	NodeId         string
 	SshHostAddress SshHostAddress
 }
 
@@ -132,16 +121,6 @@ func applicationYaml(swarmMaster bool, application *Application) ([]byte, error)
 	return appYml.Bytes(), nil
 }
 
-// contains validate element exists in slice or not.
-//func contains(element string, elements []string) bool {
-//	for _, s := range elements {
-//		if element == s {
-//			return true
-//		}
-//	}
-//	return false
-//}
-
 // generateId generates random id.
 func generateId() string {
 	rb := make([]byte, 10)
@@ -188,6 +167,15 @@ func (d *Driver) Create() error {
 	//Wait for Instance to Running.
 	d.waitForInstance()
 
+	nodeId, err := GetNodeId(d.ComposeClient,d.ApplicationId)
+	if err != nil {
+		log.Error(err)
+		return err
+	} else {
+		log.Infof(nodeId)
+		d.NodeId = nodeId
+	}
+
 	return nil
 }
 
@@ -224,7 +212,6 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:   "compose-open-ports",
 			Usage:  "Compose Open Ports",
-			Value:  defaultOpenPorts,
 			EnvVar: "COMPOSE_OPEN_PORTS",
 		},
 	}
@@ -264,9 +251,9 @@ func (d *Driver) GetSSHPort() (int, error) {
 // GetSSHUsername returns username for use with ssh
 func (d *Driver) GetSSHUsername() string {
 	/*
-		if d.SshHostAddress.User != "" {
-			return d.SshHostAddress.User
-		}
+	if d.SshHostAddress.User != "" {
+		return d.SshHostAddress.User
+	}
 	*/
 	return defaultSSHUser
 }
@@ -308,6 +295,38 @@ func (d *Driver) GetState() (state.State, error) {
 		return state.Stopped, nil
 	}
 
+	nodeServiceState, err := GetNodeState(d.ComposeClient, d.ApplicationId, d.NodeId)
+	if err != nil {
+		log.Warnf("Application node does not exists.")
+		return state.Stopped, nil
+	}
+
+	log.Info(nodeServiceState)
+	switch nodeServiceState {
+	case "RUNNING":
+		return state.Running, nil
+	case "STARTING":
+		return state.Starting, nil
+	case "STOPPING":
+		return state.Stopping, nil
+	case "ERROR":
+		return state.Error, nil
+	case "STOPPED":
+		return state.Stopped, nil
+	default:
+		return state.None, nil
+	}
+}
+
+// GetState returns the state that the host is in (running, stopped, etc)
+func (d *Driver) GetApplicationState() (state.State, error) {
+	log.Debugf("Calling .GetApplicationState()")
+
+	if d.ApplicationId == "" {
+		log.Warnf("Application id is nil.")
+		return state.Stopped, nil
+	}
+
 	applicationSummary, err := application.Application(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		log.Warnf("Application does not exists.")
@@ -324,16 +343,19 @@ func (d *Driver) GetState() (state.State, error) {
 		return state.Stopping, nil
 	case "ERROR":
 		return state.Error, nil
+	case "STOPPED":
+		return state.Stopped, nil
 	default:
 		return state.None, nil
 	}
 }
 
+
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
 
 	if d.ApplicationId == "" {
-		log.Warnf("Empty ApplicationId")
+		log.Warnf("ApplicationId is not set.")
 		return nil
 	}
 
@@ -360,7 +382,7 @@ func (d *Driver) PreCreateCheck() error {
 	if err != nil {
 		return err
 	} else if state != "true" {
-		return errors.New("Compose Server not healthy.")
+		return errors.New("Compose Server is not healthy.")
 	}
 
 	// Validate specified location exists.
@@ -373,7 +395,7 @@ func (d *Driver) PreCreateCheck() error {
 	if err != nil {
 		return err
 	} else if len(catalogs) <= 0 {
-		return errors.New("Catalog does not exists.")
+		return errors.New("Catalog does not exist.")
 	}
 
 	return nil
@@ -382,7 +404,8 @@ func (d *Driver) PreCreateCheck() error {
 // Remove a host
 func (d *Driver) Remove() error {
 	if d.ApplicationId == "" {
-		log.Warnf("Empty ApplicationId")
+		// TODO Add code to remove application by searching application name
+		log.Warnf("ApplicationId is not set, please verify does application exists.")
 		return nil
 	}
 	_, err := Delete(d.ComposeClient, d.ApplicationId)
@@ -397,8 +420,8 @@ func (d *Driver) Remove() error {
 // Restart a host. This may just call Stop(); Start() if the provider does not
 // have any special restart behaviour.
 func (d *Driver) Restart() error {
-	log.Infof("TODO: Restart not yet implemented")
-	return nil
+	err := TriggerRestart(d.ComposeClient,d.ApplicationId,d.NodeId)
+	return err
 }
 
 // SetConfigFromFlags configures the driver with the object that was returned
@@ -423,10 +446,17 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingLocation
 	}
 
-	/*
-		if openPortsStr != "" && strings.Trim(openPortsStr," ") != "" &&  !openPortsRegx.MatchString(openPortsStr) {
-			return errorInvalidOpenPorts
-		}*/
+	if openPortsStr != "" && strings.Trim(openPortsStr, " ") != "" {
+		tokens := strings.Split(openPortsStr, ",")
+		var trimToken string
+		for _, token := range tokens {
+			trimToken = strings.Trim(token, " ")
+			if !openPortsRegx.MatchString(trimToken) {
+				log.Warnf("Invalid Token: ", trimToken)
+				return errorInvalidOpenPorts
+			}
+		}
+	}
 
 	d.Application = NewApplication()
 	d.Application.Name = d.MachineName
@@ -439,14 +469,14 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 
 // Start a host
 func (d *Driver) Start() error {
-	log.Infof("TODO: Start not yet implemented.")
-	return nil
+	err := TriggerStart(d.ComposeClient,d.ApplicationId,d.NodeId)
+	return err
 }
 
 // Stop a host gracefully
 func (d *Driver) Stop() error {
-	log.Infof("TODO: Stop not yet implemented.")
-	return nil
+	err := TriggerStop(d.ComposeClient,d.ApplicationId,d.NodeId)
+	return err
 }
 
 func (d *Driver) createKeyPair() (string, error) {
@@ -482,7 +512,7 @@ func (d *Driver) waitForInstance() error {
 }
 
 func (d *Driver) instanceIsRunning() bool {
-	st, err := d.GetState()
+	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
 	}
