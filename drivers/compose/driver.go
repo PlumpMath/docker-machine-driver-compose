@@ -29,14 +29,14 @@ import (
 )
 
 const (
-	driverName     = "compose"
+	driverName = "compose"
 	defaultSSHUser = "compose"
 	defaultSSHPort = 22
 )
 
 const (
 	COMPOSE_DOCKERHOST_CATALOG = "com.canopy.compose.ubuntu"
-	MAPPED_PORT_SENSOR_NAME    = "mapped.portPart.dockerhost.port"
+	MAPPED_PORT_SENSOR_NAME = "mapped.portPart.dockerhost.port"
 	HOST_ADDRESS_SENSOR_NAME = "host.address"
 	SERVICE_STATE_SENSOR_NAME = "service.state"
 )
@@ -49,10 +49,10 @@ var (
 	//defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 
-	errorMissingUser     = errors.New("Compose user requires use the --compose-user option")
+	errorMissingUser = errors.New("Compose user requires use the --compose-user option")
 	errorMissingPassword = errors.New("Compose password requires use the --compose-password option")
 	errorMissingLocation = errors.New("Compose target location requires use the --compose-target-location option")
-	errorInvalidOpenPorts    = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
+	errorInvalidOpenPorts = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
 	//errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
 	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
 )
@@ -167,7 +167,7 @@ func (d *Driver) Create() error {
 	//Wait for Instance to Running.
 	d.waitForInstance()
 
-	nodeId, err := GetNodeId(d.ComposeClient,d.ApplicationId)
+	nodeId, err := GetNodeId(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -366,7 +366,7 @@ func (d *Driver) Kill() error {
 		return nil
 	}
 
-	_, err = application.Delete(d.ComposeClient, d.ApplicationId)
+	_, err = Delete(d.ComposeClient, d.ApplicationId)
 	if err != nil {
 		log.Warnf("Error while killing application [%s]", d.ApplicationId)
 		return nil
@@ -420,7 +420,7 @@ func (d *Driver) Remove() error {
 // Restart a host. This may just call Stop(); Start() if the provider does not
 // have any special restart behaviour.
 func (d *Driver) Restart() error {
-	err := TriggerRestart(d.ComposeClient,d.ApplicationId,d.NodeId)
+	err := TriggerRestart(d.ComposeClient, d.ApplicationId, d.NodeId)
 	return err
 }
 
@@ -469,13 +469,13 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 
 // Start a host
 func (d *Driver) Start() error {
-	err := TriggerStart(d.ComposeClient,d.ApplicationId,d.NodeId)
+	err := TriggerStart(d.ComposeClient, d.ApplicationId, d.NodeId)
 	return err
 }
 
 // Stop a host gracefully
 func (d *Driver) Stop() error {
-	err := TriggerStop(d.ComposeClient,d.ApplicationId,d.NodeId)
+	err := TriggerStop(d.ComposeClient, d.ApplicationId, d.NodeId)
 	return err
 }
 

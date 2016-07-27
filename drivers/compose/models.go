@@ -1,11 +1,11 @@
 package compose
 
 type Application struct {
-	Name         string
-	Location     string
-	Type         string
-	SshUserKey   string
-	OpenPorts    []string
+	Name       string
+	Location   string
+	Type       string
+	SshUserKey string
+	OpenPorts  []string
 }
 
 func NewApplication() *Application {
