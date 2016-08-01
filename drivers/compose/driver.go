@@ -26,6 +26,7 @@ import (
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
 	"regexp"
+	"time"
 )
 
 const (
@@ -505,7 +506,7 @@ func (d *Driver) createKeyPair() (string, error) {
 }
 
 func (d *Driver) waitForInstance() error {
-	if err := mcnutils.WaitFor(d.instanceIsRunning); err != nil {
+	if err := mcnutils.WaitForSpecific(d.instanceIsRunning, 200, 3*time.Second); err != nil {
 		return err
 	}
 	return nil
