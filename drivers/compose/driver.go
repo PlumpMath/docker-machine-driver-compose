@@ -37,6 +37,18 @@ const (
 )
 
 const (
+	// Small T-shirt size
+	Small = "small"
+	// Medium T-shirt size
+	Medium = "medium"
+	// Large T-shirt size
+	Large = "large"
+	// XLarge T-shirt size
+	XLarge = "xlarge"
+	// XXLarge T-shirt size
+	XXLarge = "xxlarge"
+	// XXXLarge T-shirt size
+	XXXLarge = "xxxlarge"
 	// ComposeDockerHostCatalog catalog id
 	ComposeDockerHostCatalog = "com.canopy.compose.ubuntu"
 	// MappedPortSensorName sensor key
@@ -55,11 +67,15 @@ var (
 	//defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 
-	errorMissingUser      = errors.New("Compose user requires use the --compose-user option")
-	errorMissingPassword  = errors.New("Compose password requires use the --compose-password option")
-	errorMissingLocation  = errors.New("Compose target location requires use the --compose-target-location option")
-	errorInvalidOpenPorts = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
-	//errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
+	defaultTemplateSize = Medium
+	templateSizes       = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
+
+	errorMissingUser         = errors.New("Compose user requires use the --compose-user option")
+	errorMissingPassword     = errors.New("Compose password requires use the --compose-password option")
+	errorMissingLocation     = errors.New("Compose target location requires use the --compose-target-location option")
+	errorInvalidOpenPorts    = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
+	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
+	errorNotStarting         = errors.New("Compose application state should be Starting: Maximum number of retries (10) exceeded")
 	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
 )
 
@@ -96,9 +112,10 @@ location: {{.Location}}
 services:
   - type: {{.Type}}
     brooklyn.config:
-      dockerhost.port: 2376{{range $_, $val := .OpenPorts}}
+      dockerhost.port: 2376
+      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}
-      compose.sshUserKey: {{.SshUserKey}}`
+      compose.sshUserKey: {{.SSHUserKey}}`
 
 // Template for DockerSwarmHost
 const swarmHostAppTmpl = `name: {{.Name}}
@@ -107,9 +124,10 @@ services:
   - type: {{.Type}}
     brooklyn.config:
       dockerhost.port: 2376
-      swarmhost.port: 3376{{range $_, $val := .OpenPorts}}
-      {{$val}}{{end}}
-      compose.sshUserKey: {{.SshUserKey}}`
+      swarmhost.port: 3376
+      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
+      {{$val}}{{end}}	  
+      compose.sshUserKey: {{.SSHUserKey}}`
 
 func applicationYaml(swarmMaster bool, application *Application) ([]byte, error) {
 	// Create a new template and parse the application into it.
@@ -142,6 +160,16 @@ func generateID() string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+// contains validate element exists in slice or not.
+func contains(element string, elements []string) bool {
+	for _, s := range elements {
+		if element == s {
+			return true
+		}
+	}
+	return false
+}
+
 // Create a host using the driver's config
 func (d *Driver) Create() error {
 	// Create SSH Key and Pair
@@ -170,10 +198,21 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Infof(taskSummary.Id)
+	log.Infof("Task ID: %s and Entity ID: %s", taskSummary.Id, taskSummary.EntityId)
 
-	//Wait for Instance to Running.
-	d.waitForInstance()
+	// Wait for Instance Starting
+	startingErr := d.waitForStarting()
+	if startingErr != nil {
+		log.Error(startingErr)
+		return startingErr
+	}
+
+	// Wait for Instance to Running.
+	runningErr := d.waitForInstance()
+	if runningErr != nil {
+		log.Error(runningErr)
+		return runningErr
+	}
 
 	nodeID, err := GetNodeID(d.ComposeClient, d.ApplicationID)
 	if err != nil {
@@ -215,6 +254,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "compose-target-location",
 			Usage:  "Compose Target Location",
 			EnvVar: "COMPOSE_TARGET_LOCATION",
+		},
+		mcnflag.StringFlag{
+			Name:   "compose-template-size",
+			Usage:  "Compose Template Size",
+			Value:  defaultTemplateSize,
+			EnvVar: "COMPOSE_TEMPLATE_SIZE",
 		},
 		mcnflag.StringFlag{
 			Name:   "compose-open-ports",
@@ -438,6 +483,7 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	user := opts.String("compose-user")                // mandatory
 	password := opts.String("compose-password")        // mandatory
 	location := opts.String("compose-target-location") // mandatory
+	templateSize := opts.String("compose-template-size")
 	openPortsStr := opts.String("compose-open-ports")
 
 	if user == "" {
@@ -450,6 +496,10 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 
 	if location == "" {
 		return errorMissingLocation
+	}
+
+	if !contains(templateSize, templateSizes) {
+		return errorInvalidTemplateSize
 	}
 
 	if openPortsStr != "" && strings.Trim(openPortsStr, " ") != "" {
@@ -467,6 +517,7 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.Application = NewApplication()
 	d.Application.Name = d.MachineName
 	d.Application.Location = location
+	d.Application.TemplateSize = templateSize
 	d.Application.OpenPorts = strings.Split(openPortsStr, ",")
 
 	d.ComposeClient = net.NewNetwork(baseURL, user, password, false)
@@ -517,12 +568,30 @@ func (d *Driver) waitForInstance() error {
 	return nil
 }
 
+func (d *Driver) waitForStarting() error {
+	if err := mcnutils.WaitForSpecific(d.instanceIsStarting, 10, 3*time.Second); err != nil {
+		return errorNotStarting
+	}
+	return nil
+}
+
 func (d *Driver) instanceIsRunning() bool {
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
 	}
 	if st == state.Running {
+		return true
+	}
+	return false
+}
+
+func (d *Driver) instanceIsStarting() bool {
+	st, err := d.GetApplicationState()
+	if err != nil {
+		log.Debug(err)
+	}
+	if st == state.Starting {
 		return true
 	}
 	return false

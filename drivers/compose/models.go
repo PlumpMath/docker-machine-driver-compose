@@ -2,11 +2,12 @@ package compose
 
 // Application holds information about amp application
 type Application struct {
-	Name       string
-	Location   string
-	Type       string
-	SSHUserKey string
-	OpenPorts  []string
+	Name         string
+	Location     string
+	Type         string
+	SSHUserKey   string
+	TemplateSize string
+	OpenPorts    []string
 }
 
 // NewApplication return empty Application
