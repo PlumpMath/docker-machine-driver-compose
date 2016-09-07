@@ -1,4 +1,4 @@
-// Copyright (C) 2016-2017 ATOS - All rights reserved.
+// Package compose Copyright (C) 2016-2017 ATOS - All rights reserved.
 package compose
 
 import (
@@ -16,6 +16,9 @@ import (
 
 	"strings"
 
+	"regexp"
+	"time"
+
 	"github.com/apache/brooklyn-client/api/application"
 	"github.com/apache/brooklyn-client/api/server"
 	"github.com/apache/brooklyn-client/net"
@@ -25,54 +28,58 @@ import (
 	"github.com/docker/machine/libmachine/mcnutils"
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
-	"regexp"
-	"time"
 )
 
 const (
-	driverName = "compose"
+	driverName     = "compose"
 	defaultSSHUser = "compose"
 	defaultSSHPort = 22
 )
 
 const (
-	COMPOSE_DOCKERHOST_CATALOG = "com.canopy.compose.ubuntu"
-	MAPPED_PORT_SENSOR_NAME = "mapped.portPart.dockerhost.port"
-	HOST_ADDRESS_SENSOR_NAME = "host.address"
-	SERVICE_STATE_SENSOR_NAME = "service.state"
+	// ComposeDockerHostCatalog catalog id
+	ComposeDockerHostCatalog = "com.canopy.compose.ubuntu"
+	// MappedPortSensorName sensor key
+	MappedPortSensorName = "mapped.portPart.dockerhost.port"
+	// HostAddressSensorName sensor key
+	HostAddressSensorName = "host.address"
+	//ServiceStateSensorName sensor key
+	ServiceStateSensorName = "service.state"
 )
 
 var (
 	dockerPort = 2376
 	//swarmPort  = 3376
 
-	defaultComposeBaseUrl = "http://localhost:8081"
+	defaultComposeBaseURL = "http://localhost:8081"
 	//defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 
-	errorMissingUser = errors.New("Compose user requires use the --compose-user option")
-	errorMissingPassword = errors.New("Compose password requires use the --compose-password option")
-	errorMissingLocation = errors.New("Compose target location requires use the --compose-target-location option")
+	errorMissingUser      = errors.New("Compose user requires use the --compose-user option")
+	errorMissingPassword  = errors.New("Compose password requires use the --compose-password option")
+	errorMissingLocation  = errors.New("Compose target location requires use the --compose-target-location option")
 	errorInvalidOpenPorts = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
 	//errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
 	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
 )
 
+// Driver structure
 type Driver struct {
 	*drivers.BaseDriver
 	ComposeClient  *net.Network
 	Application    *Application
-	Id             string
-	ApplicationId  string
-	NodeId         string
-	SshHostAddress SshHostAddress
+	ID             string
+	ApplicationID  string
+	NodeID         string
+	SSHHostAddress SSHHostAddress
 }
 
+// NewDriver return *Driver
 func NewDriver(hostName, storePath string) *Driver {
-	id := generateId()
+	id := generateID()
 
 	driver := &Driver{
-		Id: id,
+		ID: id,
 		BaseDriver: &drivers.BaseDriver{
 			SSHUser:     defaultSSHUser,
 			SSHPort:     defaultSSHPort,
@@ -122,8 +129,8 @@ func applicationYaml(swarmMaster bool, application *Application) ([]byte, error)
 	return appYml.Bytes(), nil
 }
 
-// generateId generates random id.
-func generateId() string {
+// generateID generates random id.
+func generateID() string {
 	rb := make([]byte, 10)
 	_, err := rand.Read(rb)
 	if err != nil {
@@ -143,12 +150,12 @@ func (d *Driver) Create() error {
 		return fmt.Errorf("unable to create key pair: %s", err)
 	}
 
-	catalogs, err := CatalogByRegex(d.ComposeClient, COMPOSE_DOCKERHOST_CATALOG)
-	catalogId := catalogs[0].Id
-	log.Infof(catalogId)
+	catalogs, err := CatalogByRegex(d.ComposeClient, ComposeDockerHostCatalog)
+	catalogID := catalogs[0].Id
+	log.Infof(catalogID)
 
-	d.Application.Type = catalogId
-	d.Application.SshUserKey = publicKey
+	d.Application.Type = catalogID
+	d.Application.SSHUserKey = publicKey
 
 	appYaml, err := applicationYaml(d.SwarmMaster, d.Application)
 	if err != nil {
@@ -156,27 +163,26 @@ func (d *Driver) Create() error {
 	}
 
 	taskSummary, err := application.CreateFromBytes(d.ComposeClient, appYaml)
-	d.ApplicationId = taskSummary.EntityId
+	d.ApplicationID = taskSummary.EntityId
 
 	if err != nil {
 		log.Error(err)
 		return err
-	} else {
-		log.Infof(taskSummary.Id)
 	}
+
+	log.Infof(taskSummary.Id)
 
 	//Wait for Instance to Running.
 	d.waitForInstance()
 
-	nodeId, err := GetNodeId(d.ComposeClient, d.ApplicationId)
+	nodeID, err := GetNodeID(d.ComposeClient, d.ApplicationID)
 	if err != nil {
 		log.Error(err)
 		return err
-	} else {
-		log.Infof(nodeId)
-		d.NodeId = nodeId
 	}
 
+	log.Infof(nodeID)
+	d.NodeID = nodeID
 	return nil
 }
 
@@ -192,7 +198,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:   "compose-base-url",
 			Usage:  "Compose Base URL",
-			Value:  defaultComposeBaseUrl,
+			Value:  defaultComposeBaseURL,
 			EnvVar: "COMPOSE_BASE_URL",
 		},
 		mcnflag.StringFlag{
@@ -222,12 +228,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
 	log.Debugf("Calling .GetIP()")
-	sshHostAddress, err := DescendantsSshHostAndPortSensor(d.ComposeClient, d.ApplicationId)
+	sshHostAddress, err := DescendantsSSHHostAndPortSensor(d.ComposeClient, d.ApplicationID)
 	if err != nil {
 		return "", nil
 	}
-	d.SshHostAddress = sshHostAddress
-	log.Infof(d.SshHostAddress.HostAndPort.Host)
+	d.SSHHostAddress = sshHostAddress
+	log.Infof(d.SSHHostAddress.HostAndPort.Host)
 	return sshHostAddress.HostAndPort.Host, nil
 }
 
@@ -245,16 +251,16 @@ func (d *Driver) GetSSHHostname() (string, error) {
 // GetSSHPort returns port for use with ssh
 func (d *Driver) GetSSHPort() (int, error) {
 	log.Debugf("Calling .GetSSHPort()")
-	log.Info(d.SshHostAddress.HostAndPort.Port)
-	return d.SshHostAddress.HostAndPort.Port, nil
+	log.Info(d.SSHHostAddress.HostAndPort.Port)
+	return d.SSHHostAddress.HostAndPort.Port, nil
 }
 
 // GetSSHUsername returns username for use with ssh
 func (d *Driver) GetSSHUsername() string {
 	/*
-	if d.SshHostAddress.User != "" {
-		return d.SshHostAddress.User
-	}
+		if d.SshHostAddress.User != "" {
+			return d.SshHostAddress.User
+		}
 	*/
 	return defaultSSHUser
 }
@@ -275,9 +281,9 @@ func (d *Driver) GetURL() (string, error) {
 		return "", nil
 	}
 
-	sensorInfo, err := DescendantsSensor(d.ComposeClient, d.ApplicationId, MAPPED_PORT_SENSOR_NAME)
+	sensorInfo, err := DescendantsSensor(d.ComposeClient, d.ApplicationID, MappedPortSensorName)
 	if err != nil {
-		for key, _ := range sensorInfo {
+		for key := range sensorInfo {
 			dockerPort = sensorInfo[key]
 			break
 		}
@@ -291,12 +297,12 @@ func (d *Driver) GetURL() (string, error) {
 func (d *Driver) GetState() (state.State, error) {
 	log.Debugf("Calling .GetState()")
 
-	if d.ApplicationId == "" {
+	if d.ApplicationID == "" {
 		log.Warnf("Application id is nil.")
 		return state.Stopped, nil
 	}
 
-	nodeServiceState, err := GetNodeState(d.ComposeClient, d.ApplicationId, d.NodeId)
+	nodeServiceState, err := GetNodeState(d.ComposeClient, d.ApplicationID, d.NodeID)
 	if err != nil {
 		log.Warnf("Application node does not exists.")
 		return state.Stopped, nil
@@ -319,16 +325,16 @@ func (d *Driver) GetState() (state.State, error) {
 	}
 }
 
-// GetState returns the state that the host is in (running, stopped, etc)
+// GetApplicationState returns the state that the host is in (running, stopped, etc)
 func (d *Driver) GetApplicationState() (state.State, error) {
 	log.Debugf("Calling .GetApplicationState()")
 
-	if d.ApplicationId == "" {
+	if d.ApplicationID == "" {
 		log.Warnf("Application id is nil.")
 		return state.Stopped, nil
 	}
 
-	applicationSummary, err := application.Application(d.ComposeClient, d.ApplicationId)
+	applicationSummary, err := application.Application(d.ComposeClient, d.ApplicationID)
 	if err != nil {
 		log.Warnf("Application does not exists.")
 		return state.Stopped, nil
@@ -351,25 +357,24 @@ func (d *Driver) GetApplicationState() (state.State, error) {
 	}
 }
 
-
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
 
-	if d.ApplicationId == "" {
+	if d.ApplicationID == "" {
 		log.Warnf("ApplicationId is not set.")
 		return nil
 	}
 
-	_, err := application.Application(d.ComposeClient, d.ApplicationId)
+	_, err := application.Application(d.ComposeClient, d.ApplicationID)
 
 	if err != nil {
-		log.Warnf("Application having id [%s] does not exists", d.ApplicationId)
+		log.Warnf("Application having id [%s] does not exists", d.ApplicationID)
 		return nil
 	}
 
-	_, err = Delete(d.ComposeClient, d.ApplicationId)
+	_, err = Delete(d.ComposeClient, d.ApplicationID)
 	if err != nil {
-		log.Warnf("Error while killing application [%s]", d.ApplicationId)
+		log.Warnf("Error while killing application [%s]", d.ApplicationID)
 		return nil
 	}
 	return err
@@ -392,7 +397,7 @@ func (d *Driver) PreCreateCheck() error {
 	}
 
 	// Validate specified operating system catalog exists.
-	catalogs, err := CatalogByRegex(d.ComposeClient, COMPOSE_DOCKERHOST_CATALOG)
+	catalogs, err := CatalogByRegex(d.ComposeClient, ComposeDockerHostCatalog)
 	if err != nil {
 		return err
 	} else if len(catalogs) <= 0 {
@@ -404,15 +409,15 @@ func (d *Driver) PreCreateCheck() error {
 
 // Remove a host
 func (d *Driver) Remove() error {
-	if d.ApplicationId == "" {
+	if d.ApplicationID == "" {
 		// TODO Add code to remove application by searching application name
 		log.Warnf("ApplicationId is not set, please verify does application exists.")
 		return nil
 	}
-	_, err := Delete(d.ComposeClient, d.ApplicationId)
+	_, err := Delete(d.ComposeClient, d.ApplicationID)
 
 	if err != nil {
-		log.Warnf("Error while removing application [%s]", d.ApplicationId)
+		log.Warnf("Error while removing application [%s]", d.ApplicationID)
 		return nil
 	}
 	return err
@@ -421,7 +426,7 @@ func (d *Driver) Remove() error {
 // Restart a host. This may just call Stop(); Start() if the provider does not
 // have any special restart behaviour.
 func (d *Driver) Restart() error {
-	err := TriggerRestart(d.ComposeClient, d.ApplicationId, d.NodeId)
+	err := TriggerRestart(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
 
@@ -429,7 +434,7 @@ func (d *Driver) Restart() error {
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.SetSwarmConfigFromFlags(opts)
-	baseUrl := opts.String("compose-base-url")
+	baseURL := opts.String("compose-base-url")
 	user := opts.String("compose-user")                // mandatory
 	password := opts.String("compose-password")        // mandatory
 	location := opts.String("compose-target-location") // mandatory
@@ -464,19 +469,19 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.Application.Location = location
 	d.Application.OpenPorts = strings.Split(openPortsStr, ",")
 
-	d.ComposeClient = net.NewNetwork(baseUrl, user, password, false)
+	d.ComposeClient = net.NewNetwork(baseURL, user, password, false)
 	return nil
 }
 
 // Start a host
 func (d *Driver) Start() error {
-	err := TriggerStart(d.ComposeClient, d.ApplicationId, d.NodeId)
+	err := TriggerStart(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
 
 // Stop a host gracefully
 func (d *Driver) Stop() error {
-	err := TriggerStop(d.ComposeClient, d.ApplicationId, d.NodeId)
+	err := TriggerStop(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
 
