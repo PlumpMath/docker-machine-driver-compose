@@ -3,16 +3,17 @@ package compose
 
 import (
 	"testing"
+
 	"github.com/apache/brooklyn-client/net"
 	"github.com/docker/machine/libmachine/log"
 )
 
 var (
-	network *net.Network = net.NewNetwork("http://217.115.71.184:5550", "compose", "Canopy1!", false)
+	network = net.NewNetwork("http://217.115.71.184:5550", "compose", "Canopy1!", false)
 )
 
 func TestDelete(t *testing.T) {
-	sshHostAddress, err := DescendantsSshHostAndPortSensor(network, "s0ZNhmV9")
+	sshHostAddress, err := DescendantsSSHHostAndPortSensor(network, "s0ZNhmV9")
 
 	if err != nil {
 		t.Fail()
@@ -22,7 +23,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestSensor(t *testing.T) {
-	sshHostAddress, err := DescendantsSensor(network, "sdpxTJF2", MAPPED_PORT_SENSOR_NAME)
+	sshHostAddress, err := DescendantsSensor(network, "sdpxTJF2", MappedPortSensorName)
 
 	if err != nil {
 		t.Fail()

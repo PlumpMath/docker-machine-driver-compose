@@ -1,10 +1,11 @@
-// Copyright (C) 2016-2017 ATOS - All rights reserved.
+// Package compose Copyright (C) 2016-2017 ATOS - All rights reserved.
 package compose
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/apache/brooklyn-client/api/application"
 	"github.com/apache/brooklyn-client/api/entity_effectors"
 	"github.com/apache/brooklyn-client/api/entity_sensors"
@@ -15,9 +16,11 @@ import (
 )
 
 const (
-	HOST_SSH_ADDRESS_SENSOR = "host.sshAddress"
+	// HostSSHAddressSensor is sensor information for host address
+	HostSSHAddressSensor = "host.sshAddress"
 )
 
+// CatalogByRegex returns catalog which can be filter by regular expression
 func CatalogByRegex(network *net.Network, regex string) ([]models.CatalogItemSummary, error) {
 	url := fmt.Sprintf("/v1/catalog/applications/?regex=%s&allVersions=false", regex)
 	var response []models.CatalogItemSummary
@@ -29,6 +32,7 @@ func CatalogByRegex(network *net.Network, regex string) ([]models.CatalogItemSum
 	return response, err
 }
 
+// Delete invokes expunge request for application.
 func Delete(network *net.Network, application string) (models.TaskSummary, error) {
 	url := fmt.Sprintf("/v1/applications/%s/entities/%s/expunge?release=true", application, application)
 	var response models.TaskSummary
@@ -40,10 +44,11 @@ func Delete(network *net.Network, application string) (models.TaskSummary, error
 	return response, err
 }
 
-func DescendantsSshHostAndPortSensor(network *net.Network, applicationId string) (SshHostAddress, error) {
-	sensor, err := application.DescendantsSensor(network, applicationId, HOST_SSH_ADDRESS_SENSOR)
-	m := map[string]SshHostAddress{}
-	var sshHostAddress SshHostAddress
+// DescendantsSSHHostAndPortSensor returns SSH host information of node.
+func DescendantsSSHHostAndPortSensor(network *net.Network, applicationID string) (SSHHostAddress, error) {
+	sensor, err := application.DescendantsSensor(network, applicationID, HostSSHAddressSensor)
+	m := map[string]SSHHostAddress{}
+	var sshHostAddress SSHHostAddress
 	if err != nil {
 		return sshHostAddress, err
 	}
@@ -54,36 +59,38 @@ func DescendantsSshHostAndPortSensor(network *net.Network, applicationId string)
 	}
 	log.Debug(m)
 
-	for key, _ := range m {
+	for key := range m {
 		sshHostAddress = m[key]
 		break
 	}
 	return sshHostAddress, nil
 }
 
-func GetNodeId(network *net.Network, applicationId string) (string, error) {
-	sensorInfo, err := application.DescendantsSensor(network, applicationId, HOST_ADDRESS_SENSOR_NAME)
-	var nodeId string
+// GetNodeID return node ID.
+func GetNodeID(network *net.Network, applicationID string) (string, error) {
+	sensorInfo, err := application.DescendantsSensor(network, applicationID, HostAddressSensorName)
+	var nodeID string
 
 	m := map[string]string{}
 	if err != nil {
-		return nodeId, err
+		return nodeID, err
 	}
 
 	err = json.Unmarshal([]byte(sensorInfo), &m)
 	if err != nil {
-		return nodeId, err
+		return nodeID, err
 	}
-	for key, _ := range m {
+	for key := range m {
 		log.Info("Key: ", key)
-		nodeId = key
+		nodeID = key
 		break
 	}
-	return nodeId, nil
+	return nodeID, nil
 }
 
-func GetNodeState(network *net.Network, applicationId, entityId string) (string, error) {
-	serviceState, err := entity_sensors.SensorValue(network, applicationId, entityId, SERVICE_STATE_SENSOR_NAME)
+// GetNodeState returns node current state
+func GetNodeState(network *net.Network, applicationID, entityID string) (string, error) {
+	serviceState, err := entity_sensors.SensorValue(network, applicationID, entityID, ServiceStateSensorName)
 
 	if err != nil {
 		return "", err
@@ -94,8 +101,9 @@ func GetNodeState(network *net.Network, applicationId, entityId string) (string,
 	return "UNKNOWN", nil
 }
 
-func DescendantsSensor(network *net.Network, applicationId string, sensor string) (map[string]int, error) {
-	sensor, err := application.DescendantsSensor(network, applicationId, sensor)
+// DescendantsSensor returns sensor information of decendant node.
+func DescendantsSensor(network *net.Network, applicationID string, sensor string) (map[string]int, error) {
+	sensor, err := application.DescendantsSensor(network, applicationID, sensor)
 	m := map[string]int{}
 	if err != nil {
 		return m, err
@@ -109,39 +117,43 @@ func DescendantsSensor(network *net.Network, applicationId string, sensor string
 	return m, nil
 }
 
+// LocationExists validates location exists or not
 func LocationExists(network *net.Network, locationName string) (string, error) {
 	locations, err := locations.LocationList(network)
 
-	var locationId string
+	var locationID string
 	if err != nil {
-		return locationId, err
+		return locationID, err
 	}
 
 	for _, location := range locations {
 		if location.Name == locationName {
-			return locationId, nil
+			return locationID, nil
 		}
 	}
-	return locationId, errors.New("Location with specified name does not exists.")
+	return locationID, errors.New("Location with specified name does not exists.")
 }
 
-func TriggerStart(network *net.Network, applicationId string, entityId string) error {
+// TriggerStart trigger start
+func TriggerStart(network *net.Network, applicationID string, entityID string) error {
 	params := []string{}
 	args := []string{}
-	_, err := entity_effectors.TriggerEffector(network, applicationId, entityId, "start", params, args)
+	_, err := entity_effectors.TriggerEffector(network, applicationID, entityID, "start", params, args)
 	return err
 }
 
-func TriggerStop(network *net.Network, applicationId string, entityId string) error {
+// TriggerStop triggers stop
+func TriggerStop(network *net.Network, applicationID string, entityID string) error {
 	params := []string{"stopProcessMode", "stopMachineMode"}
 	args := []string{"ALWAYS", "NEVER"}
-	_, err := entity_effectors.TriggerEffector(network, applicationId, entityId, "stop", params, args)
+	_, err := entity_effectors.TriggerEffector(network, applicationID, entityID, "stop", params, args)
 	return err
 }
 
-func TriggerRestart(network *net.Network, applicationId string, entityId string) error {
+// TriggerRestart triggers restart.
+func TriggerRestart(network *net.Network, applicationID string, entityID string) error {
 	params := []string{"restartChildren", "restartMachine"}
 	args := []string{"true", "false"}
-	_, err := entity_effectors.TriggerEffector(network, applicationId, entityId, "restart", params, args)
+	_, err := entity_effectors.TriggerEffector(network, applicationID, entityID, "restart", params, args)
 	return err
 }
