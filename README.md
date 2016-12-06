@@ -21,6 +21,12 @@ Build The Driver
 Development Environment
 -----------------------
 
+Glide vendor tool setup
+
+`curl https://glide.sh/get | sh`
+
+`glide install`
+
 Build Latest Driver
 `$ go build ../src/stash.fsc.atos-services.net/scm/cet/bdmd.git/docker-machine-driver-compose.go`
 

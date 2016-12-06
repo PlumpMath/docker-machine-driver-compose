@@ -19,9 +19,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/apache/brooklyn-client/api/application"
-	"github.com/apache/brooklyn-client/api/server"
-	"github.com/apache/brooklyn-client/net"
+	"github.com/apache/brooklyn-client/cli/api/application"
+	"github.com/apache/brooklyn-client/cli/api/server"
+	"github.com/apache/brooklyn-client/cli/net"
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
@@ -49,8 +49,6 @@ const (
 	XXLarge = "xxlarge"
 	// XXXLarge T-shirt size
 	XXXLarge = "xxxlarge"
-	// ComposeDockerHostCatalog catalog id
-	// ComposeDockerHostCatalog = "com.canopy.compose.rancher.dockerhost"
 	// MappedPortSensorName sensor key
 	MappedPortSensorName = "mapped.portPart.dockerhost.port"
 	// HostAddressSensorName sensor key
@@ -104,7 +102,7 @@ type Driver struct {
 }
 
 // NewDriver return *Driver
-func NewDriver(hostName, storePath string) *Driver {
+func NewDriver(machineName, storePath string) *Driver {
 	id := generateID()
 
 	driver := &Driver{
@@ -112,7 +110,7 @@ func NewDriver(hostName, storePath string) *Driver {
 		BaseDriver: &drivers.BaseDriver{
 			SSHUser:     defaultSSHUser,
 			SSHPort:     defaultSSHPort,
-			MachineName: hostName,
+			MachineName: machineName,
 			StorePath:   storePath,
 		},
 	}
@@ -320,11 +318,6 @@ func (d *Driver) GetIP() (string, error) {
 	return sshHostName, err
 }
 
-// GetMachineName returns the name of the machine
-func (d *Driver) GetMachineName() string {
-	return d.MachineName
-}
-
 // GetSSHHostname returns hostname for use with ssh
 func (d *Driver) GetSSHHostname() (string, error) {
 	log.Debugf("Calling .GetSSHHostname()")
@@ -445,7 +438,7 @@ func (d *Driver) GetApplicationState() (state.State, error) {
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
 
-	if d.ApplicationID == "" {
+	/*if d.ApplicationID == "" {
 		log.Warnf("ApplicationId is not set.")
 		return nil
 	}
@@ -461,8 +454,8 @@ func (d *Driver) Kill() error {
 	if err != nil {
 		log.Warnf("Error while killing application [%s]", d.ApplicationID)
 		return nil
-	}
-	return err
+	}*/
+	return nil
 }
 
 // PreCreateCheck allows for pre-create operations to make sure a driver is ready for creation
@@ -494,7 +487,7 @@ func (d *Driver) PreCreateCheck() error {
 
 // Remove a host
 func (d *Driver) Remove() error {
-	if d.ApplicationID == "" {
+	/*if d.ApplicationID == "" {
 		// TODO Add code to remove application by searching application name
 		log.Warnf("ApplicationId is not set, please verify does application exists.")
 		return nil
@@ -504,8 +497,8 @@ func (d *Driver) Remove() error {
 	if err != nil {
 		log.Warnf("Error while removing application [%s]", d.ApplicationID)
 		return nil
-	}
-	return err
+	}*/
+	return nil
 }
 
 // Restart a host. This may just call Stop(); Start() if the provider does not
@@ -619,20 +612,20 @@ func (d *Driver) createKeyPair() (string, error) {
 }
 
 func (d *Driver) waitForInstance() error {
-	if err := mcnutils.WaitForSpecific(d.instanceIsRunning, 200, 3*time.Second); err != nil {
+	if err := mcnutils.WaitForSpecific(d.isInstanceRunning, 200, 3*time.Second); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (d *Driver) waitForStarting() error {
-	if err := mcnutils.WaitForSpecific(d.instanceIsStarting, 10, 3*time.Second); err != nil {
+	if err := mcnutils.WaitForSpecific(d.isInstanceStarting, 10, 3*time.Second); err != nil {
 		return errorNotStarting
 	}
 	return nil
 }
 
-func (d *Driver) instanceIsRunning() bool {
+func (d *Driver) isInstanceRunning() bool {
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
@@ -643,7 +636,7 @@ func (d *Driver) instanceIsRunning() bool {
 	return false
 }
 
-func (d *Driver) instanceIsStarting() bool {
+func (d *Driver) isInstanceStarting() bool {
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)

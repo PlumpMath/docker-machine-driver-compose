@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/brooklyn-client/api/application"
-	"github.com/apache/brooklyn-client/api/entity_effectors"
-	"github.com/apache/brooklyn-client/api/entity_sensors"
-	"github.com/apache/brooklyn-client/api/locations"
-	"github.com/apache/brooklyn-client/models"
-	"github.com/apache/brooklyn-client/net"
+	"github.com/apache/brooklyn-client/cli/api/application"
+	"github.com/apache/brooklyn-client/cli/api/entity_effectors"
+	"github.com/apache/brooklyn-client/cli/api/entity_sensors"
+	"github.com/apache/brooklyn-client/cli/api/locations"
+	"github.com/apache/brooklyn-client/cli/models"
+	"github.com/apache/brooklyn-client/cli/net"
 	"github.com/docker/machine/libmachine/log"
 )
 

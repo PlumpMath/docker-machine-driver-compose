@@ -4,7 +4,7 @@ package compose
 import (
 	"testing"
 
-	"github.com/apache/brooklyn-client/net"
+	"github.com/apache/brooklyn-client/cli/net"
 	"github.com/docker/machine/libmachine/log"
 )
 
