@@ -438,7 +438,7 @@ func (d *Driver) GetApplicationState() (state.State, error) {
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
 
-	/*if d.ApplicationID == "" {
+	if d.ApplicationID == "" {
 		log.Warnf("ApplicationId is not set.")
 		return nil
 	}
@@ -454,7 +454,7 @@ func (d *Driver) Kill() error {
 	if err != nil {
 		log.Warnf("Error while killing application [%s]", d.ApplicationID)
 		return nil
-	}*/
+	}
 	return nil
 }
 
@@ -487,7 +487,7 @@ func (d *Driver) PreCreateCheck() error {
 
 // Remove a host
 func (d *Driver) Remove() error {
-	/*if d.ApplicationID == "" {
+	if d.ApplicationID == "" {
 		// TODO Add code to remove application by searching application name
 		log.Warnf("ApplicationId is not set, please verify does application exists.")
 		return nil
@@ -497,7 +497,7 @@ func (d *Driver) Remove() error {
 	if err != nil {
 		log.Warnf("Error while removing application [%s]", d.ApplicationID)
 		return nil
-	}*/
+	}
 	return nil
 }
 
