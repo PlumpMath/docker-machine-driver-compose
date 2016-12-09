@@ -88,6 +88,7 @@ var (
 	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
 	errorNotStarting         = errors.New("Compose application state should be Starting: Maximum number of retries (10) exceeded")
 	errorInvalidOS           = errors.New("Specified operating system format is not supported, it shouble ubuntu:15.10 or centos:7.2 etc")
+	errorCatalogNotExists    = errors.New("Specified catalog does not exists")
 )
 
 // Driver structure
@@ -479,7 +480,17 @@ func (d *Driver) PreCreateCheck() error {
 	if err != nil {
 		return err
 	} else if len(catalogs) <= 0 {
-		return errors.New("Catalog does not exist.")
+		return errorCatalogNotExists
+	}
+
+	// Match for exact catalog.
+	if len(catalogs) > 1 {
+		for _, catalog := range catalogs {
+			if catalog.Type == d.Application.Type {
+				return nil
+			}
+		}
+		return errorCatalogNotExists
 	}
 
 	return nil
