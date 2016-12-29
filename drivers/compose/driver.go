@@ -77,7 +77,7 @@ var (
 	composeOpenPorts      = "compose-open-ports"
 
 	defaultCatalogID       = "com.canopy.compose.rancher.dockerhost"
-	defaultOperatingSystem = "ubuntu:15.10"
+	defaultOperatingSystem = "ubuntu:16.04"
 	defaultTemplateSize    = Medium
 	templateSizes          = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
 
