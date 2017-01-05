@@ -6,6 +6,9 @@ type Application struct {
 	Location     string
 	Type         string
 	SSHUserKey   string
+	OsName       string
+	OsVersion    string
+	Skip         bool
 	TemplateSize string
 	OpenPorts    []string
 }
@@ -26,4 +29,14 @@ type HostAndPort struct {
 type SSHHostAddress struct {
 	User        string
 	HostAndPort HostAndPort
+}
+
+// GetSSHHostname return Host Address
+func (s SSHHostAddress) GetSSHHostname() (string, error) {
+	return s.HostAndPort.Host, nil
+}
+
+// GetSSHPort return SSH Port
+func (s SSHHostAddress) GetSSHPort() (int, error) {
+	return s.HostAndPort.Port, nil
 }

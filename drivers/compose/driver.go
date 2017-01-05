@@ -19,9 +19,9 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/apache/brooklyn-client/api/application"
-	"github.com/apache/brooklyn-client/api/server"
-	"github.com/apache/brooklyn-client/net"
+	"github.com/apache/brooklyn-client/cli/api/application"
+	"github.com/apache/brooklyn-client/cli/api/server"
+	"github.com/apache/brooklyn-client/cli/net"
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
@@ -49,8 +49,6 @@ const (
 	XXLarge = "xxlarge"
 	// XXXLarge T-shirt size
 	XXXLarge = "xxxlarge"
-	// ComposeDockerHostCatalog catalog id
-	ComposeDockerHostCatalog = "com.canopy.compose.ubuntu"
 	// MappedPortSensorName sensor key
 	MappedPortSensorName = "mapped.portPart.dockerhost.port"
 	// HostAddressSensorName sensor key
@@ -66,9 +64,22 @@ var (
 	defaultComposeBaseURL = "http://localhost:8081"
 	//defaultOpenPorts = "tomcat.port: 8080,web.port: 80,ssl.port: 443"
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
+	osRegx        = regexp.MustCompile(`([a-zA-z])\w+[:][0-9]{1,2}([.][0-9]{1,2})?`)
 
-	defaultTemplateSize = Medium
-	templateSizes       = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
+	composeBaseURL        = "compose-base-url"
+	composeUser           = "compose-user"            // mandatory
+	composePassword       = "compose-password"        // mandatory
+	composeTargetLocation = "compose-target-location" // mandatory
+	composeSkipOS         = "compose-skip-os"
+	composeCatalogID      = "compose-catalog-id"
+	composeTargetOS       = "compose-target-os"
+	composeTemplateSize   = "compose-template-size"
+	composeOpenPorts      = "compose-open-ports"
+
+	defaultCatalogID       = "com.canopy.compose.rancher.dockerhost"
+	defaultOperatingSystem = "ubuntu:16.04"
+	defaultTemplateSize    = Medium
+	templateSizes          = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
 
 	errorMissingUser         = errors.New("Compose user requires use the --compose-user option")
 	errorMissingPassword     = errors.New("Compose password requires use the --compose-password option")
@@ -76,7 +87,8 @@ var (
 	errorInvalidOpenPorts    = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
 	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
 	errorNotStarting         = errors.New("Compose application state should be Starting: Maximum number of retries (10) exceeded")
-	//errorInvalidOS           = errors.New("Specified operating system not supported, available options are ubuntu")
+	errorInvalidOS           = errors.New("Specified operating system format is not supported, it shouble ubuntu:15.10 or centos:7.2 etc")
+	errorCatalogNotExists    = errors.New("Specified catalog does not exists")
 )
 
 // Driver structure
@@ -91,7 +103,7 @@ type Driver struct {
 }
 
 // NewDriver return *Driver
-func NewDriver(hostName, storePath string) *Driver {
+func NewDriver(machineName, storePath string) *Driver {
 	id := generateID()
 
 	driver := &Driver{
@@ -99,7 +111,7 @@ func NewDriver(hostName, storePath string) *Driver {
 		BaseDriver: &drivers.BaseDriver{
 			SSHUser:     defaultSSHUser,
 			SSHPort:     defaultSSHPort,
-			MachineName: hostName,
+			MachineName: machineName,
 			StorePath:   storePath,
 		},
 	}
@@ -113,9 +125,12 @@ services:
   - type: {{.Type}}
     brooklyn.config:
       dockerhost.port: 2376
+      compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
+      compose.os.version: '{{.OsVersion}}'
+      compose.os.utility.skip: {{.Skip}}
       compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}
-      compose.sshUserKey: {{.SSHUserKey}}`
+      `
 
 // Template for DockerSwarmHost
 const swarmHostAppTmpl = `name: {{.Name}}
@@ -125,9 +140,12 @@ services:
     brooklyn.config:
       dockerhost.port: 2376
       swarmhost.port: 3376
+      compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
+      compose.os.version: '{{.OsVersion}}'
+      compose.os.utility.skip: {{.Skip}}	  
       compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}	  
-      compose.sshUserKey: {{.SSHUserKey}}`
+      `
 
 func applicationYaml(swarmMaster bool, application *Application) ([]byte, error) {
 	// Create a new template and parse the application into it.
@@ -178,7 +196,7 @@ func (d *Driver) Create() error {
 		return fmt.Errorf("unable to create key pair: %s", err)
 	}
 
-	catalogs, err := CatalogByRegex(d.ComposeClient, ComposeDockerHostCatalog)
+	catalogs, err := CatalogByRegex(d.ComposeClient, d.Application.Type)
 	catalogID := catalogs[0].Id
 	log.Infof(catalogID)
 
@@ -235,34 +253,51 @@ func (d *Driver) DriverName() string {
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
-			Name:   "compose-base-url",
+			Name:   composeBaseURL,
 			Usage:  "Compose Base URL",
 			Value:  defaultComposeBaseURL,
 			EnvVar: "COMPOSE_BASE_URL",
 		},
 		mcnflag.StringFlag{
-			Name:   "compose-user",
+			Name:   composeUser,
 			Usage:  "Compose User",
 			EnvVar: "COMPOSE_USER",
 		},
 		mcnflag.StringFlag{
-			Name:   "compose-password",
+			Name:   composePassword,
 			Usage:  "Compose Password",
 			EnvVar: "COMPOSE_PASSWORD",
 		},
 		mcnflag.StringFlag{
-			Name:   "compose-target-location",
+			Name:   composeCatalogID,
+			Usage:  "Compose Catalog Id",
+			Value:  defaultCatalogID,
+			EnvVar: "COMPOSE_CATALOG_ID",
+		},
+		mcnflag.StringFlag{
+			Name:   composeTargetLocation,
 			Usage:  "Compose Target Location",
 			EnvVar: "COMPOSE_TARGET_LOCATION",
 		},
+		mcnflag.BoolFlag{
+			Name:   composeSkipOS,
+			Usage:  "Compose Skip OS",
+			EnvVar: "COMPOSE_SKIP_OS",
+		},
 		mcnflag.StringFlag{
-			Name:   "compose-template-size",
+			Name:   composeTargetOS,
+			Usage:  "Compose Target OS",
+			Value:  defaultOperatingSystem,
+			EnvVar: "COMPOSE_TARGET_OS",
+		},
+		mcnflag.StringFlag{
+			Name:   composeTemplateSize,
 			Usage:  "Compose Template Size",
 			Value:  defaultTemplateSize,
 			EnvVar: "COMPOSE_TEMPLATE_SIZE",
 		},
 		mcnflag.StringFlag{
-			Name:   "compose-open-ports",
+			Name:   composeOpenPorts,
 			Usage:  "Compose Open Ports",
 			EnvVar: "COMPOSE_OPEN_PORTS",
 		},
@@ -278,13 +313,10 @@ func (d *Driver) GetIP() (string, error) {
 		return "", nil
 	}
 	d.SSHHostAddress = sshHostAddress
-	log.Infof(d.SSHHostAddress.HostAndPort.Host)
-	return sshHostAddress.HostAndPort.Host, nil
-}
 
-// GetMachineName returns the name of the machine
-func (d *Driver) GetMachineName() string {
-	return d.MachineName
+	sshHostName, err := d.SSHHostAddress.GetSSHHostname()
+	log.Infof(sshHostName)
+	return sshHostName, err
 }
 
 // GetSSHHostname returns hostname for use with ssh
@@ -296,8 +328,10 @@ func (d *Driver) GetSSHHostname() (string, error) {
 // GetSSHPort returns port for use with ssh
 func (d *Driver) GetSSHPort() (int, error) {
 	log.Debugf("Calling .GetSSHPort()")
-	log.Info(d.SSHHostAddress.HostAndPort.Port)
-	return d.SSHHostAddress.HostAndPort.Port, nil
+
+	sshPort, err := d.SSHHostAddress.GetSSHPort()
+	log.Info(sshPort)
+	return sshPort, err
 }
 
 // GetSSHUsername returns username for use with ssh
@@ -422,7 +456,7 @@ func (d *Driver) Kill() error {
 		log.Warnf("Error while killing application [%s]", d.ApplicationID)
 		return nil
 	}
-	return err
+	return nil
 }
 
 // PreCreateCheck allows for pre-create operations to make sure a driver is ready for creation
@@ -442,11 +476,21 @@ func (d *Driver) PreCreateCheck() error {
 	}
 
 	// Validate specified operating system catalog exists.
-	catalogs, err := CatalogByRegex(d.ComposeClient, ComposeDockerHostCatalog)
+	catalogs, err := CatalogByRegex(d.ComposeClient, d.Application.Type)
 	if err != nil {
 		return err
 	} else if len(catalogs) <= 0 {
-		return errors.New("Catalog does not exist.")
+		return errorCatalogNotExists
+	}
+
+	// Match for exact catalog.
+	if len(catalogs) > 1 {
+		for _, catalog := range catalogs {
+			if catalog.Type == d.Application.Type {
+				return nil
+			}
+		}
+		return errorCatalogNotExists
 	}
 
 	return nil
@@ -465,7 +509,7 @@ func (d *Driver) Remove() error {
 		log.Warnf("Error while removing application [%s]", d.ApplicationID)
 		return nil
 	}
-	return err
+	return nil
 }
 
 // Restart a host. This may just call Stop(); Start() if the provider does not
@@ -479,12 +523,15 @@ func (d *Driver) Restart() error {
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.SetSwarmConfigFromFlags(opts)
-	baseURL := opts.String("compose-base-url")
-	user := opts.String("compose-user")                // mandatory
-	password := opts.String("compose-password")        // mandatory
-	location := opts.String("compose-target-location") // mandatory
-	templateSize := opts.String("compose-template-size")
-	openPortsStr := opts.String("compose-open-ports")
+	baseURL := opts.String(composeBaseURL)
+	user := opts.String(composeUser)                     // mandatory
+	password := opts.String(composePassword)             // mandatory
+	targetLocation := opts.String(composeTargetLocation) // mandatory
+	skipOS := opts.Bool(composeSkipOS)
+	catalogID := opts.String(composeCatalogID)
+	targetOS := opts.String(composeTargetOS)
+	templateSize := opts.String(composeTemplateSize)
+	strOpenPorts := opts.String(composeOpenPorts)
 
 	if user == "" {
 		return errorMissingUser
@@ -494,7 +541,7 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorMissingPassword
 	}
 
-	if location == "" {
+	if targetLocation == "" {
 		return errorMissingLocation
 	}
 
@@ -502,8 +549,8 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorInvalidTemplateSize
 	}
 
-	if openPortsStr != "" && strings.Trim(openPortsStr, " ") != "" {
-		tokens := strings.Split(openPortsStr, ",")
+	if strOpenPorts != "" && strings.Trim(strOpenPorts, " ") != "" {
+		tokens := strings.Split(strOpenPorts, ",")
 		var trimToken string
 		for _, token := range tokens {
 			trimToken = strings.Trim(token, " ")
@@ -514,11 +561,25 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		}
 	}
 
+	if !osRegx.MatchString(targetOS) {
+		log.Warnf("Invalid operating system format: ", targetOS)
+		return errorInvalidOS
+	}
+
+	tokens := strings.Split(targetOS, ":")
+	if len(tokens) != 2 {
+		return errorInvalidOS
+	}
+
 	d.Application = NewApplication()
 	d.Application.Name = d.MachineName
-	d.Application.Location = location
+	d.Application.Location = targetLocation
+	d.Application.Type = catalogID
+	d.Application.Skip = skipOS
+	d.Application.OsName = tokens[0]
+	d.Application.OsVersion = tokens[1]
 	d.Application.TemplateSize = templateSize
-	d.Application.OpenPorts = strings.Split(openPortsStr, ",")
+	d.Application.OpenPorts = strings.Split(strOpenPorts, ",")
 
 	d.ComposeClient = net.NewNetwork(baseURL, user, password, false)
 	return nil
@@ -562,20 +623,20 @@ func (d *Driver) createKeyPair() (string, error) {
 }
 
 func (d *Driver) waitForInstance() error {
-	if err := mcnutils.WaitForSpecific(d.instanceIsRunning, 200, 3*time.Second); err != nil {
+	if err := mcnutils.WaitForSpecific(d.isInstanceRunning, 200, 3*time.Second); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (d *Driver) waitForStarting() error {
-	if err := mcnutils.WaitForSpecific(d.instanceIsStarting, 10, 3*time.Second); err != nil {
+	if err := mcnutils.WaitForSpecific(d.isInstanceStarting, 10, 3*time.Second); err != nil {
 		return errorNotStarting
 	}
 	return nil
 }
 
-func (d *Driver) instanceIsRunning() bool {
+func (d *Driver) isInstanceRunning() bool {
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
@@ -586,7 +647,7 @@ func (d *Driver) instanceIsRunning() bool {
 	return false
 }
 
-func (d *Driver) instanceIsStarting() bool {
+func (d *Driver) isInstanceStarting() bool {
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
