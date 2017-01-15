@@ -17,13 +17,26 @@ import (
 
 const (
 	// HostSSHAddressSensor is sensor information for host address
-	HostSSHAddressSensor = "host.sshAddress"
+	HostSSHAddressSensor       = "host.sshAddress"
+	HostSSHSubnetAddressSensor = "host.subnet.address"
 )
 
 // CatalogByRegex returns catalog which can be filter by regular expression
 func CatalogByRegex(network *net.Network, regex string) ([]models.CatalogItemSummary, error) {
 	url := fmt.Sprintf("/v1/catalog/applications/?regex=%s&allVersions=false", regex)
 	var response []models.CatalogItemSummary
+	body, err := network.SendGetRequest(url)
+	if err != nil {
+		return response, err
+	}
+	err = json.Unmarshal(body, &response)
+	return response, err
+}
+
+// CatalogByName returns catalog with fixed symbolicName and version
+func CatalogByName(network *net.Network, symbolicName, version string) (models.CatalogItemSummary, error) {
+	url := fmt.Sprintf("/v1/catalog/applications/%s/%s", symbolicName, version)
+	var response models.CatalogItemSummary
 	body, err := network.SendGetRequest(url)
 	if err != nil {
 		return response, err
@@ -42,6 +55,28 @@ func Delete(network *net.Network, application string) (models.TaskSummary, error
 	}
 	err = json.Unmarshal(body, &response)
 	return response, err
+}
+
+// DescendantsSSHHostSubnetAddress returns SSH host information of node.
+func DescendantsSSHHostSubnetAddress(network *net.Network, applicationID string) (string, error) {
+	sensor, err := application.DescendantsSensor(network, applicationID, HostSSHSubnetAddressSensor)
+	m := map[string]string{}
+	var sshHostSubnetAddress string
+	if err != nil {
+		return sshHostSubnetAddress, err
+	}
+
+	err = json.Unmarshal([]byte(sensor), &m)
+	if err != nil {
+		return sshHostSubnetAddress, err
+	}
+	log.Debug(m)
+
+	for key := range m {
+		sshHostSubnetAddress = m[key]
+		break
+	}
+	return sshHostSubnetAddress, nil
 }
 
 // DescendantsSSHHostAndPortSensor returns SSH host information of node.

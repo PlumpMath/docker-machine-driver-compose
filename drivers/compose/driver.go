@@ -66,15 +66,17 @@ var (
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 	osRegx        = regexp.MustCompile(`([a-zA-z])\w+[:][0-9]{1,2}([.][0-9]{1,2})?`)
 
-	composeBaseURL        = "compose-base-url"
-	composeUser           = "compose-user"            // mandatory
-	composePassword       = "compose-password"        // mandatory
-	composeTargetLocation = "compose-target-location" // mandatory
-	composeSkipOS         = "compose-skip-os"
-	composeCatalogID      = "compose-catalog-id"
-	composeTargetOS       = "compose-target-os"
-	composeTemplateSize   = "compose-template-size"
-	composeOpenPorts      = "compose-open-ports"
+	composeBaseURL            = "compose-base-url"
+	composeUser               = "compose-user"            // mandatory
+	composePassword           = "compose-password"        // mandatory
+	composeTargetLocation     = "compose-target-location" // mandatory
+	composeSkipOS             = "compose-skip-os"
+	composeCatalogID          = "compose-catalog-id"
+	composeTargetOS           = "compose-target-os"
+	composeTemplateSize       = "compose-template-size"
+	composeOpenPorts          = "compose-open-ports"
+	composeUsePrivateIP       = "compose-use-private-ip"
+	composeNewrelicMonitoring = "compose-newrelic-monitoring"
 
 	defaultCatalogID       = "com.canopy.compose.rancher.dockerhost"
 	defaultOperatingSystem = "ubuntu:16.04"
@@ -94,12 +96,14 @@ var (
 // Driver structure
 type Driver struct {
 	*drivers.BaseDriver
-	ComposeClient  *net.Network
-	Application    *Application
-	ID             string
-	ApplicationID  string
-	NodeID         string
-	SSHHostAddress SSHHostAddress
+	ComposeClient        *net.Network
+	Application          *Application
+	ID                   string
+	ApplicationID        string
+	NodeID               string         `json:",omitempty"`
+	SSHHostAddress       SSHHostAddress `json:",omitempty"`
+	SSHHostSubnetAddress string         `json:",omitempty"`
+	UsePrivateIP         bool           `json:",omitempty"`
 }
 
 // NewDriver return *Driver
@@ -128,6 +132,7 @@ services:
       compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
       compose.os.version: '{{.OsVersion}}'
       compose.os.utility.skip: {{.Skip}}
+      compose.installNewRelic: {{.NewRelic}}
       compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}
       `
@@ -142,12 +147,14 @@ services:
       swarmhost.port: 3376
       compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
       compose.os.version: '{{.OsVersion}}'
-      compose.os.utility.skip: {{.Skip}}	  
+      compose.os.utility.skip: {{.Skip}}
+      compose.installNewRelic: {{.NewRelic}}
       compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
       {{$val}}{{end}}	  
       `
 
 func applicationYaml(swarmMaster bool, application *Application) ([]byte, error) {
+	log.Debugf("Calling .applicationYaml()")
 	// Create a new template and parse the application into it.
 	var t *template.Template
 	if swarmMaster {
@@ -167,6 +174,7 @@ func applicationYaml(swarmMaster bool, application *Application) ([]byte, error)
 
 // generateID generates random id.
 func generateID() string {
+	log.Debugf("Calling .generateID()")
 	rb := make([]byte, 10)
 	_, err := rand.Read(rb)
 	if err != nil {
@@ -180,6 +188,7 @@ func generateID() string {
 
 // contains validate element exists in slice or not.
 func contains(element string, elements []string) bool {
+	log.Debugf("Calling .contains()")
 	for _, s := range elements {
 		if element == s {
 			return true
@@ -190,17 +199,12 @@ func contains(element string, elements []string) bool {
 
 // Create a host using the driver's config
 func (d *Driver) Create() error {
+	log.Debugf("Calling .Create()")
 	// Create SSH Key and Pair
 	publicKey, err := d.createKeyPair()
 	if err != nil {
 		return fmt.Errorf("unable to create key pair: %s", err)
 	}
-
-	catalogs, err := CatalogByRegex(d.ComposeClient, d.Application.Type)
-	catalogID := catalogs[0].Id
-	log.Infof(catalogID)
-
-	d.Application.Type = catalogID
 	d.Application.SSHUserKey = publicKey
 
 	appYaml, err := applicationYaml(d.SwarmMaster, d.Application)
@@ -237,20 +241,36 @@ func (d *Driver) Create() error {
 		log.Error(err)
 		return err
 	}
-
 	log.Infof(nodeID)
 	d.NodeID = nodeID
+
+	// Set SSHHostAddress Details
+	err = d.sshHostAddress()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	// Set SSHHostSubnetAddress Details
+	err = d.sshHostSubnetAddress()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
 	return nil
 }
 
 // DriverName returns the name of the driver
 func (d *Driver) DriverName() string {
+	log.Debugf("Calling .DriverName()")
 	return driverName
 }
 
 // GetCreateFlags returns the mcnflag.Flag slice representing the flags
 // that can be set, their descriptions and defaults.
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
+	log.Debugf("Calling .GetCreateFlags()")
 	return []mcnflag.Flag{
 		mcnflag.StringFlag{
 			Name:   composeBaseURL,
@@ -301,6 +321,16 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "Compose Open Ports",
 			EnvVar: "COMPOSE_OPEN_PORTS",
 		},
+		mcnflag.BoolFlag{
+			Name:   composeUsePrivateIP,
+			Usage:  "Compose Use Private IP",
+			EnvVar: "COMPOSE_USE_PRIVATE_IP",
+		},
+		mcnflag.BoolFlag{
+			Name:   composeNewrelicMonitoring,
+			Usage:  "Compose Newrelic Monitoring",
+			EnvVar: "COMPOSE_NEWRELIC_MONITORING",
+		},
 	}
 }
 
@@ -308,15 +338,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 // e.g. 1.2.3.4 or docker-host-d60b70a14d3a.cloudapp.net
 func (d *Driver) GetIP() (string, error) {
 	log.Debugf("Calling .GetIP()")
-	sshHostAddress, err := DescendantsSSHHostAndPortSensor(d.ComposeClient, d.ApplicationID)
-	if err != nil {
-		return "", nil
+	if d.UsePrivateIP {
+		log.Info(d.SSHHostSubnetAddress)
+		return d.SSHHostSubnetAddress, nil
 	}
-	d.SSHHostAddress = sshHostAddress
-
-	sshHostName, err := d.SSHHostAddress.GetSSHHostname()
-	log.Infof(sshHostName)
-	return sshHostName, err
+	log.Info(d.SSHHostAddress.HostAndPort.Host)
+	return d.SSHHostAddress.GetSSHHostname()
 }
 
 // GetSSHHostname returns hostname for use with ssh
@@ -329,6 +356,10 @@ func (d *Driver) GetSSHHostname() (string, error) {
 func (d *Driver) GetSSHPort() (int, error) {
 	log.Debugf("Calling .GetSSHPort()")
 
+	if d.UsePrivateIP {
+		return defaultSSHPort, nil
+	}
+
 	sshPort, err := d.SSHHostAddress.GetSSHPort()
 	log.Info(sshPort)
 	return sshPort, err
@@ -336,6 +367,7 @@ func (d *Driver) GetSSHPort() (int, error) {
 
 // GetSSHUsername returns username for use with ssh
 func (d *Driver) GetSSHUsername() string {
+	log.Debugf("Calling .GetSSHUsername()")
 	/*
 		if d.SshHostAddress.User != "" {
 			return d.SshHostAddress.User
@@ -438,7 +470,7 @@ func (d *Driver) GetApplicationState() (state.State, error) {
 
 // Kill stops a host forcefully
 func (d *Driver) Kill() error {
-
+	log.Debugf("Calling .Kill()")
 	if d.ApplicationID == "" {
 		log.Warnf("ApplicationId is not set.")
 		return nil
@@ -461,7 +493,7 @@ func (d *Driver) Kill() error {
 
 // PreCreateCheck allows for pre-create operations to make sure a driver is ready for creation
 func (d *Driver) PreCreateCheck() error {
-
+	log.Debugf("Calling .PreCreateCheck()")
 	// Validate specified server exists and reachable.
 	state, err := server.Healthy(d.ComposeClient)
 	if err != nil {
@@ -475,22 +507,36 @@ func (d *Driver) PreCreateCheck() error {
 		return err
 	}
 
-	// Validate specified operating system catalog exists.
-	catalogs, err := CatalogByRegex(d.ComposeClient, d.Application.Type)
-	if err != nil {
-		return err
-	} else if len(catalogs) <= 0 {
-		return errorCatalogNotExists
-	}
+	// Validate specified catalog exists.
+	if strings.Contains(d.Application.Type, ":") {
+		tokens := strings.SplitN(d.Application.Type, ":", 2)
+		catalog, err := CatalogByName(d.ComposeClient, tokens[0], tokens[1])
 
-	// Match for exact catalog.
-	if len(catalogs) > 1 {
-		for _, catalog := range catalogs {
-			if catalog.Type == d.Application.Type {
-				return nil
-			}
+		if err != nil {
+			return err
+		} else if strings.Contains(catalog.Id, d.Application.Type) {
+			d.Application.Type = catalog.Id
+		} else {
+			return errorCatalogNotExists
 		}
-		return errorCatalogNotExists
+	} else {
+		catalogs, err := CatalogByRegex(d.ComposeClient, d.Application.Type)
+		if err != nil {
+			return err
+		} else if len(catalogs) <= 0 {
+			return errorCatalogNotExists
+		}
+
+		// Match for exact catalog.
+		if len(catalogs) > 0 {
+			for _, catalog := range catalogs {
+				if catalog.Type == d.Application.Type {
+					d.Application.Type = catalog.Id
+					return nil
+				}
+			}
+			return errorCatalogNotExists
+		}
 	}
 
 	return nil
@@ -498,6 +544,7 @@ func (d *Driver) PreCreateCheck() error {
 
 // Remove a host
 func (d *Driver) Remove() error {
+	log.Debugf("Calling .Remove()")
 	if d.ApplicationID == "" {
 		// TODO Add code to remove application by searching application name
 		log.Warnf("ApplicationId is not set, please verify does application exists.")
@@ -515,6 +562,7 @@ func (d *Driver) Remove() error {
 // Restart a host. This may just call Stop(); Start() if the provider does not
 // have any special restart behaviour.
 func (d *Driver) Restart() error {
+	log.Debugf("Calling .Restart()")
 	err := TriggerRestart(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
@@ -522,6 +570,7 @@ func (d *Driver) Restart() error {
 // SetConfigFromFlags configures the driver with the object that was returned
 // by RegisterCreateFlags
 func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
+	log.Debugf("Calling .SetConfigFromFlags()")
 	d.SetSwarmConfigFromFlags(opts)
 	baseURL := opts.String(composeBaseURL)
 	user := opts.String(composeUser)                     // mandatory
@@ -532,6 +581,8 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	targetOS := opts.String(composeTargetOS)
 	templateSize := opts.String(composeTemplateSize)
 	strOpenPorts := opts.String(composeOpenPorts)
+	usePrivateIP := opts.Bool(composeUsePrivateIP)
+	newrelicMonitoring := opts.Bool(composeNewrelicMonitoring)
 
 	if user == "" {
 		return errorMissingUser
@@ -580,24 +631,28 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.Application.OsVersion = tokens[1]
 	d.Application.TemplateSize = templateSize
 	d.Application.OpenPorts = strings.Split(strOpenPorts, ",")
-
+	d.Application.NewRelic = newrelicMonitoring
+	d.UsePrivateIP = usePrivateIP
 	d.ComposeClient = net.NewNetwork(baseURL, user, password, false)
 	return nil
 }
 
 // Start a host
 func (d *Driver) Start() error {
+	log.Debugf("Calling .Start()")
 	err := TriggerStart(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
 
 // Stop a host gracefully
 func (d *Driver) Stop() error {
+	log.Debugf("Calling .Stop()")
 	err := TriggerStop(d.ComposeClient, d.ApplicationID, d.NodeID)
 	return err
 }
 
 func (d *Driver) createKeyPair() (string, error) {
+	log.Debugf("Calling .createKeyPair()")
 	keyPath := ""
 
 	log.Debugf("Creating New SSH Key")
@@ -623,6 +678,7 @@ func (d *Driver) createKeyPair() (string, error) {
 }
 
 func (d *Driver) waitForInstance() error {
+	log.Debugf("Calling .waitForInstance()")
 	if err := mcnutils.WaitForSpecific(d.isInstanceRunning, 200, 3*time.Second); err != nil {
 		return err
 	}
@@ -630,6 +686,7 @@ func (d *Driver) waitForInstance() error {
 }
 
 func (d *Driver) waitForStarting() error {
+	log.Debugf("Calling .waitForStarting()")
 	if err := mcnutils.WaitForSpecific(d.isInstanceStarting, 10, 3*time.Second); err != nil {
 		return errorNotStarting
 	}
@@ -637,6 +694,7 @@ func (d *Driver) waitForStarting() error {
 }
 
 func (d *Driver) isInstanceRunning() bool {
+	log.Debugf("Calling .isInstanceRunning()")
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
@@ -648,6 +706,7 @@ func (d *Driver) isInstanceRunning() bool {
 }
 
 func (d *Driver) isInstanceStarting() bool {
+	log.Debugf("Calling .isInstanceStarting()")
 	st, err := d.GetApplicationState()
 	if err != nil {
 		log.Debug(err)
@@ -659,5 +718,26 @@ func (d *Driver) isInstanceStarting() bool {
 }
 
 func (d *Driver) isSwarmMaster() bool {
+	log.Debugf("Calling .isSwarmMaster()")
 	return d.SwarmMaster
+}
+
+func (d *Driver) sshHostAddress() error {
+	log.Debugf("Calling .sshHostAddress()")
+	sshHostAddress, err := DescendantsSSHHostAndPortSensor(d.ComposeClient, d.ApplicationID)
+	if err != nil {
+		return err
+	}
+	d.SSHHostAddress = sshHostAddress
+	return nil
+}
+
+func (d *Driver) sshHostSubnetAddress() error {
+	log.Debugf("Calling .sshHostSubnetAddress()")
+	sshHostSubnetAddress, err := DescendantsSSHHostSubnetAddress(d.ComposeClient, d.ApplicationID)
+	if err != nil {
+		return err
+	}
+	d.SSHHostSubnetAddress = sshHostSubnetAddress
+	return nil
 }

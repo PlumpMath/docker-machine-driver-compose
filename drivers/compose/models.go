@@ -6,11 +6,12 @@ type Application struct {
 	Location     string
 	Type         string
 	SSHUserKey   string
-	OsName       string
-	OsVersion    string
-	Skip         bool
-	TemplateSize string
-	OpenPorts    []string
+	OsName       string   `json:",omitempty"`
+	OsVersion    string   `json:",omitempty"`
+	Skip         bool     `json:",omitempty"`
+	TemplateSize string   `json:",omitempty"`
+	OpenPorts    []string `json:",omitempty"`
+	NewRelic     bool     `json:",omitempty"`
 }
 
 // NewApplication return empty Application
