@@ -2,16 +2,22 @@ package compose
 
 // Application holds information about amp application
 type Application struct {
-	Name         string
-	Location     string
-	Type         string
-	SSHUserKey   string
-	OsName       string   `json:",omitempty"`
-	OsVersion    string   `json:",omitempty"`
-	Skip         bool     `json:",omitempty"`
-	TemplateSize string   `json:",omitempty"`
-	OpenPorts    []string `json:",omitempty"`
-	NewRelic     bool     `json:",omitempty"`
+	Name                     string
+	Location                 string
+	Type                     string
+	SSHUserKey               string
+	OsName                   string   `json:",omitempty"`
+	OsVersion                string   `json:",omitempty"`
+	Skip                     bool     `json:",omitempty"`
+	TemplateSize             string   `json:",omitempty"`
+	OpenPorts                []string `json:",omitempty"`
+	NewRelic                 bool     `json:",omitempty"`
+	Dynatrace                bool     `json:",omitempty"`
+	LogEntries               bool     `json:",omitempty"`
+	CustomStorage            bool     `json:",omitempty"`
+	CustomStorageSize        int      `json:",omitempty"`
+	RhelSubscriptionID       string   `json:",omitempty"`
+	RhelSubscriptionPassword string   `json:",omitempty"`
 }
 
 // NewApplication return empty Application

@@ -53,8 +53,16 @@ const (
 	MappedPortSensorName = "mapped.portPart.dockerhost.port"
 	// HostAddressSensorName sensor key
 	HostAddressSensorName = "host.address"
-	//ServiceStateSensorName sensor key
+	// ServiceStateSensorName sensor key
 	ServiceStateSensorName = "service.state"
+	// NewRelic as a monitoring tool
+	NewRelic = "newrelic"
+	// Dynatrace as a monitoring tool
+	Dynatrace = "dynatrace"
+	// LogEntries as a log management tool
+	LogEntries = "logentries"
+	// None as a default value
+	None = "none"
 )
 
 var (
@@ -66,31 +74,43 @@ var (
 	openPortsRegx = regexp.MustCompile(`([A-Za-z])\w+[.]port[:][\ ][0-9]{1,5}`)
 	osRegx        = regexp.MustCompile(`([a-zA-z])\w+[:][0-9]{1,2}([.][0-9]{1,2})?`)
 
-	composeBaseURL            = "compose-base-url"
-	composeUser               = "compose-user"            // mandatory
-	composePassword           = "compose-password"        // mandatory
-	composeTargetLocation     = "compose-target-location" // mandatory
-	composeSkipOS             = "compose-skip-os"
-	composeCatalogID          = "compose-catalog-id"
-	composeTargetOS           = "compose-target-os"
-	composeTemplateSize       = "compose-template-size"
-	composeOpenPorts          = "compose-open-ports"
-	composeUsePrivateIP       = "compose-use-private-ip"
-	composeNewrelicMonitoring = "compose-newrelic-monitoring"
+	composeBaseURL                  = "compose-base-url"
+	composeUser                     = "compose-user"            // mandatory
+	composePassword                 = "compose-password"        // mandatory
+	composeTargetLocation           = "compose-target-location" // mandatory
+	composeSkipOS                   = "compose-skip-os"
+	composeCatalogID                = "compose-catalog-id"
+	composeTargetOS                 = "compose-target-os"
+	composeTemplateSize             = "compose-template-size"
+	composeOpenPorts                = "compose-open-ports"
+	composeUsePrivateIP             = "compose-use-private-ip"
+	composeMonitoringTool           = "compose-monitoring-tool"
+	composeLogManagementTool        = "compose-log-management-tool"
+	composeCustomStorage            = "compose-custom-storage"
+	composeCustomStorageSize        = "compose-custom-storage-size"
+	composeRhelSubscriptionID       = "compose-rhel-subscription-id"
+	composeRhelSubscriptionPassword = "compose-rhel-subscription-password"
 
-	defaultCatalogID       = "com.canopy.compose.rancher.dockerhost"
-	defaultOperatingSystem = "ubuntu:16.04"
-	defaultTemplateSize    = Medium
-	templateSizes          = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
+	defaultCatalogID         = "com.canopy.compose.rancher.dockerhost"
+	defaultOperatingSystem   = "ubuntu:16.04"
+	defaultTemplateSize      = Medium
+	templateSizes            = []string{Small, Medium, Large, XLarge, XXLarge, XXXLarge}
+	monitoringTools          = []string{NewRelic, Dynatrace, None}
+	defaultMonitoringTool    = None
+	logManagementTools       = []string{LogEntries, None}
+	defaultLogManagementTool = None
 
-	errorMissingUser         = errors.New("Compose user requires use the --compose-user option")
-	errorMissingPassword     = errors.New("Compose password requires use the --compose-password option")
-	errorMissingLocation     = errors.New("Compose target location requires use the --compose-target-location option")
-	errorInvalidOpenPorts    = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
-	errorInvalidTemplateSize = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge")
-	errorNotStarting         = errors.New("Compose application state should be Starting: Maximum number of retries (10) exceeded")
-	errorInvalidOS           = errors.New("Specified operating system format is not supported, it shouble ubuntu:15.10 or centos:7.2 etc")
-	errorCatalogNotExists    = errors.New("Specified catalog does not exists")
+	errorMissingUser              = errors.New("Compose user requires use the --compose-user option")
+	errorMissingPassword          = errors.New("Compose password requires use the --compose-password option")
+	errorMissingLocation          = errors.New("Compose target location requires use the --compose-target-location option")
+	errorInvalidOpenPorts         = errors.New("Invalid input request to open ports, format is > web.port: 2345,tomcat.port: 8080 < etc")
+	errorInvalidTemplateSize      = errors.New("Specified template size not supported, available options are small, medium, large, xlarge, xxlarge and xxxlarge")
+	errorNotStarting              = errors.New("Compose application state should be Starting: Maximum number of retries (10) exceeded")
+	errorInvalidOS                = errors.New("Specified operating system format is not supported, it shouble ubuntu:16.04 or centos:7.2 etc")
+	errorCatalogNotExists         = errors.New("Specified catalog does not exists")
+	errorInvalidMonitoringTool    = errors.New("Specified monitoring tool is not supported")
+	errorInvalidLogManagementTool = errors.New("Specified log management tool is not supported")
+	errorInvalidCustomStorageSize = errors.New("Invalid storage specified, it must be greater than 0")
 )
 
 // Driver structure
@@ -123,47 +143,34 @@ func NewDriver(machineName, storePath string) *Driver {
 }
 
 // Template for DockerHost
-const dockerHostAppTmpl = `name: {{.Name}}
-location: {{.Location}}
+const dockerHostAppTmpl = `name: {{.Application.Name}}
+location: {{.Application.Location}}
 services:
-  - type: {{.Type}}
+  - type: {{.Application.Type}}
     brooklyn.config:
-      dockerhost.port: 2376
-      compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
-      compose.os.version: '{{.OsVersion}}'
-      compose.os.utility.skip: {{.Skip}}
-      compose.installNewRelic: {{.NewRelic}}
-      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
+      dockerhost.port: 2376{{if .SwarmMaster}}
+      swarmhost.port: 3376{{end}}{{if .Application.Skip}}
+      compose.os.utility.skip: {{.Application.Skip}}{{else}}
+      compose.os.name: {{.Application.OsName}}
+      compose.os.version: '{{.Application.OsVersion}}'{{if .Application.CustomStorage}}
+      compose.template.hdd.size:  {{.Application.CustomStorageSize}}{{end}}
+      compose.template.size: {{.Application.TemplateSize}}{{end}}{{if .Application.NewRelic}}
+      compose.installNewRelic: {{.Application.NewRelic}}{{end}}{{if .Application.Dynatrace}}
+      compose.installRuxit: {{.Application.Dynatrace}}{{end}}{{if .Application.LogEntries}}
+      compose.installLogEntriesAgent: {{.Application.LogEntries}}{{end}}{{if .Application.RhelSubscriptionID}}
+      compose.rhel.subscripton.id: {{.Application.RhelSubscriptionID}}{{end}}{{if .Application.RhelSubscriptionPassword}}
+      compose.rhel.subscription.password: {{.Application.RhelSubscriptionPassword}}{{end}}
+      compose.sshUserKey: {{.Application.SSHUserKey}}{{range $_, $val := .Application.OpenPorts}}
       {{$val}}{{end}}
       `
 
-// Template for DockerSwarmHost
-const swarmHostAppTmpl = `name: {{.Name}}
-location: {{.Location}}
-services:
-  - type: {{.Type}}
-    brooklyn.config:
-      dockerhost.port: 2376
-      swarmhost.port: 3376
-      compose.sshUserKey: {{.SSHUserKey}}      compose.os.name: {{.OsName}}
-      compose.os.version: '{{.OsVersion}}'
-      compose.os.utility.skip: {{.Skip}}
-      compose.installNewRelic: {{.NewRelic}}
-      compose.template.size: {{.TemplateSize}}{{range $_, $val := .OpenPorts}}
-      {{$val}}{{end}}	  
-      `
-
-func applicationYaml(swarmMaster bool, application *Application) ([]byte, error) {
+func applicationYaml(driver *Driver) ([]byte, error) {
 	log.Debugf("Calling .applicationYaml()")
 	// Create a new template and parse the application into it.
 	var t *template.Template
-	if swarmMaster {
-		t = template.Must(template.New("application").Parse(swarmHostAppTmpl))
-	} else {
-		t = template.Must(template.New("application").Parse(dockerHostAppTmpl))
-	}
+	t = template.Must(template.New("driver").Parse(dockerHostAppTmpl))
 	var appYml bytes.Buffer
-	err := t.Execute(&appYml, application)
+	err := t.Execute(&appYml, driver)
 	log.Infof(appYml.String())
 	var app []byte
 	if err != nil {
@@ -207,7 +214,7 @@ func (d *Driver) Create() error {
 	}
 	d.Application.SSHUserKey = publicKey
 
-	appYaml, err := applicationYaml(d.SwarmMaster, d.Application)
+	appYaml, err := applicationYaml(d)
 	if err != nil {
 		return err
 	}
@@ -326,10 +333,37 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "Compose Use Private IP",
 			EnvVar: "COMPOSE_USE_PRIVATE_IP",
 		},
+		mcnflag.StringFlag{
+			Name:   composeMonitoringTool,
+			Usage:  "Compose Monitoring Tool",
+			Value:  defaultMonitoringTool,
+			EnvVar: "COMPOSE_MONITORING_TOOL",
+		},
+		mcnflag.StringFlag{
+			Name:   composeLogManagementTool,
+			Usage:  "Compose Log Management Tool",
+			Value:  defaultLogManagementTool,
+			EnvVar: "COMPOSE_LOG_MANAGEMENT_TOOL",
+		},
 		mcnflag.BoolFlag{
-			Name:   composeNewrelicMonitoring,
-			Usage:  "Compose Newrelic Monitoring",
-			EnvVar: "COMPOSE_NEWRELIC_MONITORING",
+			Name:   composeCustomStorage,
+			Usage:  "Compose Custom Storage",
+			EnvVar: "COMPOSE_CUSTOM_STORAGE",
+		},
+		mcnflag.IntFlag{
+			Name:   composeCustomStorageSize,
+			Usage:  "Compose Custom Storage Size",
+			EnvVar: "COMPOSE_CUSTOM_STORAGE_STORAGE",
+		},
+		mcnflag.StringFlag{
+			Name:   composeRhelSubscriptionID,
+			Usage:  "Compose Rhel Subscription ID",
+			EnvVar: "COMPOSE_RHEL_SUBSCRIPTION_ID",
+		},
+		mcnflag.StringFlag{
+			Name:   composeRhelSubscriptionPassword,
+			Usage:  "Compose Rhel Subscription Password",
+			EnvVar: "COMPOSE_RHEL_SUBSCRIPTION_PASSWORD",
 		},
 	}
 }
@@ -499,7 +533,7 @@ func (d *Driver) PreCreateCheck() error {
 	if err != nil {
 		return err
 	} else if state != "true" {
-		return errors.New("Compose Server is not healthy.")
+		return errors.New("Compose Server is not healthy")
 	}
 
 	// Validate specified location exists.
@@ -582,7 +616,11 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	templateSize := opts.String(composeTemplateSize)
 	strOpenPorts := opts.String(composeOpenPorts)
 	usePrivateIP := opts.Bool(composeUsePrivateIP)
-	newrelicMonitoring := opts.Bool(composeNewrelicMonitoring)
+	monitoringTool := opts.String(composeMonitoringTool)
+	logManagementTool := opts.String(composeLogManagementTool)
+	customStorageSize := opts.Int(composeCustomStorageSize)
+	rhelSubscriptionID := strings.TrimSpace(opts.String(composeRhelSubscriptionID))
+	rhelSubscriptionPassword := strings.TrimSpace(opts.String(composeRhelSubscriptionPassword))
 
 	if user == "" {
 		return errorMissingUser
@@ -598,6 +636,14 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 
 	if !contains(templateSize, templateSizes) {
 		return errorInvalidTemplateSize
+	}
+
+	if !contains(monitoringTool, monitoringTools) {
+		return errorInvalidMonitoringTool
+	}
+
+	if !contains(logManagementTool, logManagementTools) {
+		return errorInvalidLogManagementTool
 	}
 
 	if strOpenPorts != "" && strings.Trim(strOpenPorts, " ") != "" {
@@ -617,6 +663,10 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 		return errorInvalidOS
 	}
 
+	if customStorageSize < 0 && customStorageSize == -1 {
+		return errorInvalidCustomStorageSize
+	}
+
 	tokens := strings.Split(targetOS, ":")
 	if len(tokens) != 2 {
 		return errorInvalidOS
@@ -631,7 +681,20 @@ func (d *Driver) SetConfigFromFlags(opts drivers.DriverOptions) error {
 	d.Application.OsVersion = tokens[1]
 	d.Application.TemplateSize = templateSize
 	d.Application.OpenPorts = strings.Split(strOpenPorts, ",")
-	d.Application.NewRelic = newrelicMonitoring
+	if monitoringTool == NewRelic {
+		d.Application.NewRelic = true
+	} else if monitoringTool == Dynatrace {
+		d.Application.Dynatrace = true
+	}
+	if logManagementTool == LogEntries {
+		d.Application.LogEntries = true
+	}
+	if customStorageSize > 0 {
+		d.Application.CustomStorage = true
+		d.Application.CustomStorageSize = customStorageSize
+	}
+	d.Application.RhelSubscriptionID = rhelSubscriptionID
+	d.Application.RhelSubscriptionPassword = rhelSubscriptionPassword
 	d.UsePrivateIP = usePrivateIP
 	d.ComposeClient = net.NewNetwork(baseURL, user, password, false)
 	return nil
